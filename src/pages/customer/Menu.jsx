@@ -22,7 +22,6 @@ const BRAND = "#E08A5B";
 const BRAND_DARK = "#C97245";
 const CHARCOAL = "#1F2937";
 const inr = (n) => "₹" + Number(n).toLocaleString("en-IN");
-const SESSION_MINUTES = 20;
 
 // Veg / non-veg FSSAI-style mark
 function FoodMark({ type }) {
@@ -791,15 +790,59 @@ function CustomerMenuInner({ restaurantName }) {
   const [visitNo, setVisitNo] = useState(1);                 // which visit is this?
   const [blocked, setBlocked] = useState(isBlocked);
   const [reviewing, setReviewing] = useState(false);
-  const [expired, setExpired] = useState(false);
+  // Inactivity expiry that SURVIVES REFRESH: we stamp the last-activity time in
+  // localStorage. On load, if the gap already exceeds the window, the session
+  // is expired immediately — refreshing can't be used to dodge the timeout.
+  const ACTIVITY_KEY = "qm_last_activity_v1";
+  // Inactivity window: the restaurant's configured menu-session minutes, or a
+  // sensible 15-min default. (Owner sets this in Settings → Ordering.)
+  const idleMins = (settings?.menuSessionMins && settings.menuSessionMins > 0) ? settings.menuSessionMins : 15;
+  const idleExceeded = () => {
+    try {
+      const t = Number(localStorage.getItem(ACTIVITY_KEY));
+      return t && (Date.now() - t > idleMins * 60000);
+    } catch { return false; }
+  };
+  const [expired, setExpired] = useState(idleExceeded);
 
   // Session inactivity timer
   const timer = useRef(null);
   const resetSession = () => {
+    try { localStorage.setItem(ACTIVITY_KEY, String(Date.now())); } catch {}
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setExpired(true), SESSION_MINUTES * 60000);
+    timer.current = setTimeout(() => setExpired(true), idleMins * 60000);
   };
-  useEffect(() => { resetSession(); return () => timer.current && clearTimeout(timer.current); }, []);
+  useEffect(() => {
+    // If they already idled past the window before this mount (e.g. refreshed
+    // after stepping away), expire now instead of granting a fresh timer.
+    if (idleExceeded()) { setExpired(true); return; }
+    resetSession();
+    return () => timer.current && clearTimeout(timer.current);
+  }, []);
+
+  // Count real interaction as activity: taps, scrolls, key presses. This keeps
+  // an actively-browsing customer alive even if they haven't ordered yet, while
+  // a phone left untouched on the table expires on schedule.
+  useEffect(() => {
+    if (expired) return;
+    let raf = null;
+    const bump = () => {
+      // throttle to at most once every few seconds to avoid thrashing storage
+      if (raf) return;
+      raf = setTimeout(() => { raf = null; if (!expired) resetSession(); }, 3000);
+    };
+    const evts = ["pointerdown", "keydown", "scroll", "touchstart"];
+    evts.forEach((e) => window.addEventListener(e, bump, { passive: true }));
+    return () => { evts.forEach((e) => window.removeEventListener(e, bump)); if (raf) clearTimeout(raf); };
+  }, [expired]);
+
+  // Also re-check the moment the tab becomes visible again (backgrounded tabs
+  // don't fire timers reliably on mobile).
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === "visible" && idleExceeded()) setExpired(true); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   const add = (id) => { resetSession(); setCart((c) => ({ ...c, [id]: (c[id] || 0) + 1 })); };
   const sub = (id) => { resetSession(); setCart((c) => { const n = { ...c }; if (n[id] > 1) n[id]--; else delete n[id]; return n; }); };
@@ -912,13 +955,13 @@ function CustomerMenuInner({ restaurantName }) {
     );
   }
 
-  if (expired) {
+  if (expired && !placedId) {
     return (
       <div className="min-h-screen grid place-items-center px-6 text-center" style={{ background: "#FAFAFA" }}>
         <div>
           <div className="w-16 h-16 rounded-2xl bg-white border border-gray-200 grid place-items-center mx-auto mb-4"><Clock size={28} className="text-gray-300" /></div>
           <h1 className="text-xl font-extrabold" style={{ color: CHARCOAL }}>Session expired</h1>
-          <p className="text-sm text-gray-500 mt-1.5 max-w-xs">For security, your ordering session ended after {SESSION_MINUTES} minutes. Please scan the QR code again.</p>
+          <p className="text-sm text-gray-500 mt-1.5 max-w-xs">For security, your ordering session ended after {idleMins} minutes of inactivity. Please scan the QR code again.</p>
           <button onClick={reset} className="mt-5 px-5 py-3 rounded-xl font-bold text-sm text-white inline-flex items-center gap-2" style={{ background: BRAND }}><RefreshCw size={16} />Scan again</button>
         </div>
       </div>
@@ -1211,7 +1254,7 @@ export default function CustomerMenu() {
     const timeout = setTimeout(() => {
       if (alive) setState({ ready: true, failed: "Timed out reaching the server. Check your internet connection and the Supabase project status." });
     }, 10000);
-    sb.from("restaurants").select("id, name, status, menu_session_mins").eq("slug", slug).maybeSingle()
+    sb.from("restaurants").select("id, name, status, menu_session_mins, settings").eq("slug", slug).maybeSingle()
       .then(({ data, error }) => {
         if (!alive) return;
         clearTimeout(timeout);
@@ -1219,6 +1262,15 @@ export default function CustomerMenu() {
         if (error) { setState({ ready: true, failed: error.message }); return; }
         if (!data) { setState({ ready: true, missing: true }); return; }
         if (data.status === "suspended") { setState({ ready: true, suspended: true, name: data.name }); return; }
+        // Open/closed enforcement: master "accepting orders" toggle + closed-day.
+        const st = data.settings || {};
+        const accepting = st.ordering?.acceptingOrders !== false;   // default open
+        const today = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][new Date().getDay()];
+        const closedToday = !!(st.closedDays && st.closedDays[today]);
+        if (!accepting || closedToday) {
+          setState({ ready: true, closed: true, name: data.name, closedToday });
+          return;
+        }
         setRid(data.id);
         const params = new URLSearchParams(window.location.search);
         const isScan = params.has("src") || params.has("scan") || params.has("fresh");
@@ -1300,6 +1352,21 @@ export default function CustomerMenu() {
           <p className="text-4xl mb-3">⏸️</p>
           <h1 className="text-xl font-extrabold" style={{ color: CHARCOAL }}>{state.name} is currently unavailable</h1>
           <p className="text-sm text-gray-500 mt-1.5">Online ordering is paused. Please order at the counter.</p>
+        </div>
+      </div>
+    );
+  }
+  if (state.closed) {
+    return (
+      <div className="min-h-screen grid place-items-center px-6 text-center" style={{ background: "#FAFAFA" }}>
+        <div>
+          <p className="text-4xl mb-3">🌙</p>
+          <h1 className="text-xl font-extrabold" style={{ color: CHARCOAL }}>{state.name} is closed right now</h1>
+          <p className="text-sm text-gray-500 mt-1.5 max-w-xs mx-auto">
+            {state.closedToday
+              ? "We're closed today. Please check back during our opening hours."
+              : "We're not taking online orders at the moment. Please check back soon or order at the counter."}
+          </p>
         </div>
       </div>
     );

@@ -422,3 +422,53 @@ describe("Overview specials + coupons widgets use real data in live mode", () =>
     expect(src).toMatch(/REMOTE \? "—" : LOYALTY\.members/);
   });
 });
+
+describe("session inactivity expiry survives refresh", () => {
+  it("expires when the stored last-activity is older than the window", () => {
+    const KEY = "qm_last_activity_v1";
+    const idleMins = 15;
+    // simulate activity 16 minutes ago
+    localStorage.setItem(KEY, String(Date.now() - 16 * 60000));
+    const idleExceeded = () => {
+      const t = Number(localStorage.getItem(KEY));
+      return t && (Date.now() - t > idleMins * 60000);
+    };
+    expect(idleExceeded()).toBe(true);
+  });
+  it("does NOT expire when there was recent activity", () => {
+    const KEY = "qm_last_activity_v1";
+    localStorage.setItem(KEY, String(Date.now() - 2 * 60000));   // 2 min ago
+    const idleExceeded = () => {
+      const t = Number(localStorage.getItem(KEY));
+      return t && (Date.now() - t > 15 * 60000);
+    };
+    expect(idleExceeded()).toBe(false);
+  });
+  it("the customer page persists last-activity and expires on load if idle", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    // activity is stamped to localStorage (survives refresh)
+    expect(src).toMatch(/localStorage\.setItem\(ACTIVITY_KEY/);
+    // and checked on mount to expire immediately if already idle
+    expect(src).toMatch(/if \(idleExceeded\(\)\) \{ setExpired\(true\); return; \}/);
+    // an active order is never force-expired
+    expect(src).toMatch(/if \(expired && !placedId\)/);
+  });
+});
+
+describe("open/closed ordering control", () => {
+  it("customer resolver enforces the accepting-orders flag and closed days", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    expect(src).toMatch(/accepting = st\.ordering\?\.acceptingOrders !== false/);
+    expect(src).toMatch(/closedToday = !!\(st\.closedDays/);
+    expect(src).toMatch(/if \(!accepting \|\| closedToday\)/);
+    // and there's a closed screen
+    expect(src).toMatch(/is closed right now/);
+  });
+  it("dashboard has a quick open/closed toggle on Live Orders", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/orders/LiveOrders.jsx", "utf8");
+    expect(src).toMatch(/acceptingOrders: !accepting/);
+  });
+});

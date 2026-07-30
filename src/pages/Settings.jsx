@@ -40,6 +40,7 @@ export default function Settings() {
   const ord = rSettings0().ordering || {};
   const [dinein, setDinein] = useState(ord.dinein !== false);
   const [parcel, setParcel] = useState(ord.parcel !== false);
+  const [acceptingOrders, setAcceptingOrders] = useState(ord.acceptingOrders !== false);   // master open/closed
   const [autoAccept, setAutoAccept] = useState(!!ord.autoAccept);
   const [closed, setClosed] = useState(() => rSettings0().closedDays || { Sunday: true });
   const [sessionMins, setSessionMins] = useState(() => rSettings0().menuSessionMins ?? 0);
@@ -88,7 +89,7 @@ export default function Settings() {
       contact: { ...cur.contact, ...contact },
       ...(logoOk ? { logoUrl: logoOk } : {}),
       ...(bannerOk ? { bannerUrl: bannerOk } : {}),
-      ordering: { dinein, parcel, autoAccept },
+      ordering: { dinein, parcel, autoAccept, acceptingOrders },
       closedDays: closed,
       menuSessionMins: sessionMins,
       growth: {
@@ -191,6 +192,16 @@ export default function Settings() {
 
           {tab === "ordering" && (
             <Card className="p-5 space-y-1">
+              <div className="flex items-center justify-between p-3 mb-2 rounded-xl" style={{ background: acceptingOrders ? "#ECFDF5" : "#FEF2F2", border: `1px solid ${acceptingOrders ? "#A7F3D0" : "#FECACA"}` }}>
+                <div>
+                  <p className="text-sm font-bold flex items-center gap-2" style={{ color: acceptingOrders ? "#047857" : "#B91C1C" }}>
+                    <span className="w-2 h-2 rounded-full" style={{ background: acceptingOrders ? "#10B981" : "#EF4444" }} />
+                    {acceptingOrders ? "Open — accepting orders" : "Closed — not accepting orders"}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">{acceptingOrders ? "Customers can scan and place orders now." : "Customers see a “closed” message and can't order until you reopen."}</p>
+                </div>
+                <Toggle checked={acceptingOrders} onChange={setAcceptingOrders} label="Accepting orders" />
+              </div>
               {[["Dine-in orders", "Let guests order from their table.", dinein, setDinein], ["Parcel orders", "Allow takeaway / parcel orders.", parcel, setParcel], ["Auto-accept orders", "Skip manual acceptance and send straight to the kitchen.", autoAccept, setAutoAccept]].map(([t, d, val, set]) => (
                 <div key={t} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
                   <div><p className="text-sm font-semibold" style={{ color: CHARCOAL }}>{t}</p><p className="text-xs text-gray-400">{d}</p></div>

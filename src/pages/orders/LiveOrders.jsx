@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
-  Search, RefreshCw, X, Clock, ShoppingBag,
+  Search, RefreshCw, X, Clock, ShoppingBag, Power,
   IndianRupee, Activity, Timer, Maximize2, Minimize2,
   Bike, UtensilsCrossed, Phone, StickyNote, CheckCircle2, Plus,
   ArrowRight, Archive, CircleDot, Wallet, Bell, BellOff, XCircle, ChevronRight } from "lucide-react";
@@ -18,6 +18,7 @@ const COL_META = Object.fromEntries(COLUMNS.map(c => [c.key, c]));
 import { SEED_ORDERS } from "../../data/orders";
 import { REMOTE } from "../../lib/supabaseClient";
 import { inr } from "../../lib/format";
+import { useRestaurant, updateRestaurant } from "../../lib/restaurantStore";
 import { groupTag, groupTint, phoneLast4 } from "../../lib/groupTag";
 import { usePlacedOrders, updateOrderStatus, removeOrder } from "../../lib/orderStore";
 import { pushNotification } from "../../lib/notificationStore";
@@ -383,6 +384,9 @@ export default function LiveOrders() {
   const [dragOver, setDragOver] = useState(null);
   const [spin, setSpin] = useState(false);
   const dragId = useRef(null);
+  const rSettings = useRestaurant();
+  const accepting = rSettings?.ordering?.acceptingOrders !== false;
+  const toggleOpen = () => updateRestaurant({ ordering: { ...(rSettings?.ordering || {}), acceptingOrders: !accepting } });
   const [muted, setMuted] = useState(false);
   const [showCancelled, setShowCancelled] = useState(true);
   const audioCtx = useRef(null);
@@ -538,6 +542,9 @@ export default function LiveOrders() {
             {!REMOTE && <button onClick={simulateOrder} className="hidden sm:flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
               <Plus size={16} />Simulate order
             </button>}
+            <button onClick={toggleOpen} className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-bold transition border" style={{ borderColor: accepting ? "#A7F3D0" : "#FECACA", color: accepting ? "#059669" : "#B91C1C", background: accepting ? "#ECFDF5" : "#FEF2F2" }} title={accepting ? "You're open — tap to stop taking orders" : "You're closed — tap to start taking orders"}>
+              <Power size={16} /><span className="hidden sm:inline">{accepting ? "Open" : "Closed"}</span>
+            </button>
             <button onClick={() => setMuted(m => !m)} className="flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-bold transition border" style={{ borderColor: newCount > 0 && !muted ? "#10B981" : "#E5E7EB", color: muted ? "#9CA3AF" : "#059669", background: newCount > 0 && !muted ? "#ECFDF5" : "#fff" }} title={muted ? "Unmute new-order alert" : "Mute new-order alert"}>
               {muted ? <BellOff size={16} /> : <Bell size={16} />}
               <span className="hidden sm:inline">{muted ? "Muted" : "Alert on"}</span>
