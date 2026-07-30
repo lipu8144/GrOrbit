@@ -891,7 +891,22 @@ function CustomerMenuInner({ restaurantName }) {
   const offersActive = (settings.offers || []).filter((o) => o.active);
   const specialItems = (settings.specials || []).map((id) => visible.find((m) => m.id === id)).filter(Boolean);
 
+  const [closedNow, setClosedNow] = useState(false);
   const placeOrder = async () => {
+    // Re-verify the restaurant is still accepting orders AT THE MOMENT of
+    // placing — the customer may have had the menu open when the owner toggled
+    // off. This is the authoritative check; the load-time one is just an early
+    // exit. Without this, a stale open tab could still push orders through.
+    if (COUPONS_REMOTE) {
+      try {
+        const { data } = await sb.from("restaurants").select("settings").eq("id", rid()).maybeSingle();
+        const st = data?.settings || {};
+        const accepting = st.ordering?.acceptingOrders !== false;
+        const today = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][new Date().getDay()];
+        const closedToday = !!(st.closedDays && st.closedDays[today]);
+        if (!accepting || closedToday) { setClosedNow(true); return; }
+      } catch { /* if the check itself fails, fall through — don't block a real customer on a network blip */ }
+    }
     let finalDiscount = discount;
     // Personal one-time codes are actually burned here — atomically, phone-bound.
     if (COUPONS_REMOTE && coupon?.issued) {
@@ -1225,6 +1240,11 @@ function CustomerMenuInner({ restaurantName }) {
                   <span className="text-xl font-extrabold" style={{ color: CHARCOAL }}>{inr(total)}</span>
                 </div>
               </div>
+              {closedNow && (
+                <div className="mb-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-center" style={{ background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FECACA" }}>
+                  🌙 Sorry, the restaurant just stopped taking orders. Please check at the counter.
+                </div>
+              )}
               <button onClick={placeOrder} className="w-full py-3.5 rounded-xl font-extrabold text-white text-sm active:scale-[0.99] transition shadow-sm" style={{ background: BRAND }}>
                 Place order · Get token
               </button>
@@ -1275,8 +1295,13 @@ export default function CustomerMenu() {
         const params = new URLSearchParams(window.location.search);
         const isScan = params.has("src") || params.has("scan") || params.has("fresh");
         const windowMins = data.menu_session_mins ?? 0;   // 0 = feature off
-        if (isScan) {
-          startSession(data.id);                          // real scan → (re)start clock
+        // A first-ever visit has no stored session yet — that's a fresh scan too,
+        // not a stale bookmark. Only show the re-scan wall when there genuinely
+        // WAS a session for this restaurant and it has since expired.
+        let hadSession = false;
+        try { const s = JSON.parse(localStorage.getItem("qm_menu_session_v1")); hadSession = !!(s && s.rid === data.id); } catch {}
+        if (isScan || !hadSession) {
+          startSession(data.id);                          // real scan or first visit → start clock
         } else if (sessionExpired(data.id, windowMins)) {
           setState({ ready: true, expiredScan: true, name: data.name });
           return;                                          // stale link → ask to re-scan

@@ -472,3 +472,33 @@ describe("open/closed ordering control", () => {
     expect(src).toMatch(/acceptingOrders: !accepting/);
   });
 });
+
+describe("QR scan is recognized (no infinite re-scan loop)", () => {
+  it("main QR and poster carry a scan marker", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/QRCodes.jsx", "utf8");
+    // main QR encodes ?src=qr so a scan is detected as fresh
+    expect(src).toMatch(/RealQR url=\{`\$\{menuUrl\}\?src=qr`\}/);
+    // the printed poster carries it too
+    expect(src).toMatch(/url: `\$\{menuUrl\}\?src=qr`/);
+  });
+  it("a first visit with no prior session counts as a fresh scan", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    expect(src).toMatch(/if \(isScan \|\| !hadSession\)/);
+  });
+});
+
+describe("accepting-orders is enforced at placement, not just page load", () => {
+  it("placeOrder re-checks the live accepting-orders flag before creating an order", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    // authoritative re-check inside placeOrder
+    expect(src).toMatch(/const placeOrder = async \(\) => \{[\s\S]*?acceptingOrders !== false[\s\S]*?setClosedNow\(true\); return;/);
+  });
+  it("the scan-expiry screen no longer has a one-tap bypass button", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    expect(src).not.toMatch(/I'm at the restaurant — reload/);
+  });
+});

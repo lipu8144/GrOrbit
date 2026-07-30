@@ -101,12 +101,12 @@ export default function QRCodes() {
             <p className="text-[11px] text-gray-400 mt-1.5">Set this to your live domain before printing — a QR printed with a local/test address won't work for customers.</p>
           </div>
           <div ref={mainRef} className={`p-4 rounded-2xl border border-gray-100 shadow-sm bg-white transition ${active ? "" : "opacity-40 grayscale"}`}>
-            <div data-testid="main-qr">{slugMissing ? <div className="w-[200px] h-[200px] grid place-items-center text-center px-4"><p className="text-xs text-gray-400">Your menu link isn’t ready yet — log out and back in to finish setting up your restaurant.</p></div> : <RealQR url={menuUrl} size={200} />}</div>
+            <div data-testid="main-qr">{slugMissing ? <div className="w-[200px] h-[200px] grid place-items-center text-center px-4"><p className="text-xs text-gray-400">Your menu link isn’t ready yet — log out and back in to finish setting up your restaurant.</p></div> : <RealQR url={`${menuUrl}?src=qr`} size={200} />}</div>
           </div>
           <p className="text-sm font-bold mt-3" style={{ color: CHARCOAL }}>{displayName}</p>
           <a href={menuUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold hover:underline break-all" style={{ color: BRAND }}>{menuUrl.replace(/^https?:\/\//, "")} ↗</a>
           <div className="grid grid-cols-4 gap-2 w-full mt-4">
-            <button onClick={() => printPoster({ svg: getSvg(mainRef.current), restaurantName: user?.restaurant || settings.name, url: menuUrl })} className="col-span-3 flex items-center justify-center gap-2 py-3 mb-2 rounded-xl text-sm font-bold text-white qm-btn-primary"><FileText size={16} />Download poster (print-ready)</button>
+            <button onClick={() => printPoster({ svg: getSvg(mainRef.current), restaurantName: user?.restaurant || settings.name, url: `${menuUrl}?src=qr` })} className="col-span-3 flex items-center justify-center gap-2 py-3 mb-2 rounded-xl text-sm font-bold text-white qm-btn-primary"><FileText size={16} />Download poster (print-ready)</button>
             <button onClick={() => downloadSvgAsPng(getSvg(mainRef.current), "menu-qr.png")} className="flex flex-col items-center gap-1 py-2.5 rounded-xl text-[11px] font-semibold text-white qm-btn-primary"><Download size={15} />PNG</button>
             <button onClick={() => downloadSVG(getSvg(mainRef.current), "menu-qr.svg")} className="flex flex-col items-center gap-1 py-2.5 rounded-xl text-[11px] font-semibold border border-gray-200 hover:bg-gray-50" style={{ color: CHARCOAL }}><FileCode size={15} />SVG</button>
             <button onClick={() => printNode(getSvg(mainRef.current), "GrOrbit QR")} className="flex flex-col items-center gap-1 py-2.5 rounded-xl text-[11px] font-semibold border border-gray-200 hover:bg-gray-50" style={{ color: CHARCOAL }}><FileText size={15} />PDF</button>
