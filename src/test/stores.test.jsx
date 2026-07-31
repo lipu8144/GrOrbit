@@ -502,3 +502,24 @@ describe("accepting-orders is enforced at placement, not just page load", () => 
     expect(src).not.toMatch(/I'm at the restaurant — reload/);
   });
 });
+
+describe("image upload feedback + text limits", () => {
+  it("menu item and settings images pre-validate size/type with alerts", async () => {
+    const fs = await import("fs");
+    const mi = fs.readFileSync("src/pages/menu/MenuItems.jsx", "utf8");
+    expect(mi).toMatch(/please use one under 5 MB/);
+    expect(mi).toMatch(/reportSuccess\("Image uploaded/);
+    const st = fs.readFileSync("src/pages/Settings.jsx", "utf8");
+    expect(st).toMatch(/under 5 MB/);
+    expect(st).toMatch(/uploaded ✓/);
+  });
+  it("text fields have maxLength limits", async () => {
+    const fs = await import("fs");
+    const st = fs.readFileSync("src/pages/Settings.jsx", "utf8");
+    expect(st).toMatch(/maxLength=\{60\}/);   // restaurant name
+    expect(st).toMatch(/maxLength=\{200\}/);  // address
+    const mi = fs.readFileSync("src/pages/menu/MenuItems.jsx", "utf8");
+    expect(mi).toMatch(/maxLength=\{60\}/);   // item name
+    expect(mi).toMatch(/maxLength=\{200\}/);  // item description
+  });
+});

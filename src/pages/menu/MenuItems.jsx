@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from "react";
 import { useAuth } from "../../lib/authStore";
 import { uploadImage } from "../../lib/storage";
+import { reportError, reportSuccess } from "../../lib/supabaseClient";
 import {
   Search, Plus, SlidersHorizontal, ChevronDown, X, Edit2, Copy,
   Trash2, EyeOff, Eye, MoreVertical, Star, Sparkles, UploadCloud,
@@ -147,13 +148,16 @@ function ItemModal({ open, onClose, onSave, editing }) {
   const onFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // pre-validate size/type with a clear message BEFORE attempting upload
+    if (!file.type.startsWith("image/")) { setUpErr("Please choose an image file (JPG, PNG, or WebP)."); reportError("That file isn't an image. Please choose a JPG, PNG, or WebP."); return; }
+    if (file.size > 5 * 1024 * 1024) { setUpErr("Image must be under 5 MB."); reportError(`That image is ${(file.size / 1048576).toFixed(1)} MB — please use one under 5 MB.`); return; }
     setUpErr("");
     setPreview(URL.createObjectURL(file));   // instant local preview
     setUploading(true);
     const res = await uploadImage(file, "items");   // real, persisted URL
     setUploading(false);
-    if (res.ok) set("image", res.url);
-    else { setUpErr(res.error); setPreview(form.image || ""); }
+    if (res.ok) { set("image", res.url); reportSuccess("Image uploaded ✓"); }
+    else { setUpErr(res.error); setPreview(form.image || ""); reportError(`Image upload failed: ${res.error}`); }
   };
   const valid = form.name.trim() && form.price !== "" && Number(form.price) >= 0 && !uploading;
   const submit = () => {
@@ -195,12 +199,12 @@ function ItemModal({ open, onClose, onSave, editing }) {
 
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Item name</label>
-            <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Paneer Tikka Burger" className={field} />
+            <input value={form.name} maxLength={60} onChange={e => set("name", e.target.value)} placeholder="e.g. Paneer Tikka Burger" className={field} /><span className={`block text-[10px] mt-1 text-right ${(form.name||"").length >= 60 ? "text-rose-500 font-bold" : "text-gray-300"}`}>{(form.name||"").length}/60</span>
           </div>
 
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Description</label>
-            <textarea value={form.desc} onChange={e => set("desc", e.target.value)} rows={2} placeholder="Short, appetizing description" className={field + " resize-none"} />
+            <textarea value={form.desc} maxLength={200} onChange={e => set("desc", e.target.value)} rows={2} placeholder="Short, appetizing description" className={field + " resize-none"} /><span className={`block text-[10px] mt-1 text-right ${(form.desc||"").length >= 200 ? "text-rose-500 font-bold" : "text-gray-300"}`}>{(form.desc||"").length}/200</span>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { uploadImage } from "../lib/storage";
+import { reportError, reportSuccess } from "../lib/supabaseClient";
 import { useRestaurant, updateRestaurant, updateRestaurantName, updateMenuSessionMins } from "../lib/restaurantStore";
 import { useAuth, patchSession, updatePassword } from "../lib/authStore";
 import { checkPassword } from "../lib/validation";
@@ -9,6 +10,11 @@ import {
   Check, Shield, Eye, EyeOff } from "lucide-react";
 import { BRAND, CHARCOAL } from "../lib/theme";
 import { Card, Button, Toggle } from "../components/ui/primitives";
+
+function CharCount({ value, max }) {
+  const n = (value || "").length;
+  return <span className={`block text-[10px] mt-1 text-right ${n >= max ? "text-rose-500 font-bold" : "text-gray-300"}`}>{n}/{max}</span>;
+}
 
 const field = "w-full px-3.5 py-2.5 text-sm bg-white border border-gray-200 rounded-xl qm-focus transition";
 const Label = ({ children }) => <label className="text-xs font-semibold text-gray-500 mb-1.5 block">{children}</label>;
@@ -69,15 +75,20 @@ export default function Settings() {
   const onFile = (setter, key) => async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
+    if (!f.type.startsWith("image/")) { setImgErr("Please choose an image file."); reportError("That file isn't an image. Please choose a JPG, PNG, or WebP."); return; }
+    if (f.size > 5 * 1024 * 1024) { setImgErr("Image must be under 5 MB."); reportError(`That image is ${(f.size / 1048576).toFixed(1)} MB — please use one under 5 MB.`); return; }
     setImgErr("");
     setter(URL.createObjectURL(f));                 // instant local preview only
     const res = await uploadImage(f, key);          // real, persistable URL
     if (res.ok) {
       setter(res.url);                              // replace blob with the real URL
       updateRestaurant({ [key]: res.url });         // persist immediately
+      reportSuccess(`${key === "logoUrl" ? "Logo" : "Banner"} uploaded ✓`);
     } else {
       setter(null);                                 // never keep a dead blob URL
-      setImgErr(res.error || "Upload failed. Check your image storage is set up.");
+      const msg = res.error || "Upload failed. Check your image storage is set up.";
+      setImgErr(msg);
+      reportError(`Image upload failed: ${msg}`);    // also show the global red toast
     }
   };
   const cancel = () => { setFormKey((k) => k + 1); setLogo(null); setBanner(null); };
@@ -147,10 +158,10 @@ export default function Settings() {
                   </div>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="sm:col-span-2"><Label>Restaurant name</Label><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your restaurant name" className={field} /></div>
+                  <div className="sm:col-span-2"><Label>Restaurant name</Label><input value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Your restaurant name" className={field} /><CharCount value={name} max={60} /></div>
                   <div><Label>Phone</Label><div className="relative"><Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input value={contact.phone} onChange={(e) => setContact((c) => ({ ...c, phone: e.target.value }))} placeholder="+91…" className={field + " pl-9"} /></div></div>
                   <div><Label>Email</Label><div className="relative"><Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input value={contact.email} onChange={(e) => setContact((c) => ({ ...c, email: e.target.value }))} placeholder="hello@…" className={field + " pl-9"} /></div></div>
-                  <div className="sm:col-span-2"><Label>Address</Label><div className="relative"><MapPin size={15} className="absolute left-3 top-3 text-gray-400" /><textarea rows={2} value={contact.address} onChange={(e) => setContact((c) => ({ ...c, address: e.target.value }))} placeholder="Street, city, PIN" className={field + " pl-9 resize-none"} /></div></div>
+                  <div className="sm:col-span-2"><Label>Address</Label><div className="relative"><MapPin size={15} className="absolute left-3 top-3 text-gray-400" /><textarea rows={2} maxLength={200} value={contact.address} onChange={(e) => setContact((c) => ({ ...c, address: e.target.value }))} placeholder="Street, city, PIN" className={field + " pl-9 resize-none"} /><CharCount value={contact.address} max={200} /></div></div>
                 </div>
               </Card>
               <Card className="p-5">

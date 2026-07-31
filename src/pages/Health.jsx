@@ -122,6 +122,28 @@ const ACCOUNT_CHECKS = [
       if (error) throw new Error(error.message);
       return `${data.length} categor${data.length === 1 ? "y" : "ies"}`;
   } },
+  { key: "imgupload", label: "Image upload works", run: async () => {
+      if (!hasRealTenant()) throw new Error("no real tenant");
+      // Actually upload a 1px test file to the same path shape the app uses,
+      // then delete it. A read/list can pass while INSERT is blocked, so this
+      // is the real test of whether logos/banners/item images can save.
+      const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
+      const path = `${rid()}/_healthcheck/${Date.now()}.png`;
+      const up = await sb.storage.from("menu-images").upload(path, png, { contentType: "image/png", upsert: true });
+      if (up.error) throw new Error(`upload blocked: ${up.error.message} — check bucket + migration 006`);
+      await sb.storage.from("menu-images").remove([path]).catch(() => {});
+      return "can upload images";
+  } },
+  { key: "settingsave", label: "Settings save works", run: async () => {
+      if (!hasRealTenant()) throw new Error("no real tenant");
+      const { data: cur, error: e1 } = await sb.from("restaurants").select("settings").eq("id", rid()).maybeSingle();
+      if (e1) throw new Error(`can't read settings: ${e1.message}`);
+      // write the same settings back — proves the settings jsonb column saves
+      const { data, error } = await sb.from("restaurants").update({ settings: cur?.settings || {} }).eq("id", rid()).select("id");
+      if (error) throw new Error(`settings write blocked: ${error.message}`);
+      if (!data || data.length === 0) throw new Error("settings update matched 0 rows");
+      return "logo, banner & fields can save";
+  } },
 ];
 
 export default function Health() {

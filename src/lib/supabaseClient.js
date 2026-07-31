@@ -39,6 +39,11 @@ export function reportError(message) {
   try { window.dispatchEvent(new CustomEvent("qm-error", { detail: message })); } catch {}
 }
 
+// Positive confirmation toast (e.g. "Image uploaded ✓").
+export function reportSuccess(message) {
+  try { window.dispatchEvent(new CustomEvent("qm-success", { detail: message })); } catch {}
+}
+
 // Guard for every remote write: refuses (loudly) when the tenant is unresolved.
 export function requireTenant(action = "save") {
   if (hasRealTenant()) return true;

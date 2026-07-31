@@ -38,6 +38,12 @@ export default function DashboardLayout() {
     window.addEventListener("qm-error", fn);
     return () => window.removeEventListener("qm-error", fn);
   }, []);
+  const [saveOk, setSaveOk] = useState("");
+  useEffect(() => {
+    const fn = (e) => { setSaveOk(String(e.detail || "Done ✓")); setTimeout(() => setSaveOk(""), 3500); };
+    window.addEventListener("qm-success", fn);
+    return () => window.removeEventListener("qm-success", fn);
+  }, []);
   const [editMode, setEditMode] = useState(canEditImpersonated());
   const toggleEdit = async () => { const on = !editMode; setEditMode(on); await setImpersonationEdit(on); };
   const exitImp = () => { stopImpersonation(user?.restaurantId); nav("/admin/restaurants"); };
@@ -61,6 +67,11 @@ export default function DashboardLayout() {
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[95] max-w-md w-[92%] rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-lg flex items-start gap-2" style={{ background: "#DC2626" }}>
           <span>⚠️</span><span className="flex-1">{saveErr}</span>
           <button onClick={() => setSaveErr("")} className="opacity-70 hover:opacity-100">✕</button>
+        </div>
+      )}
+      {saveOk && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[94] max-w-md w-[92%] rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-lg flex items-center gap-2" style={{ background: "#059669" }}>
+          <span>✓</span><span className="flex-1">{saveOk}</span>
         </div>
       )}
       <Toaster />
