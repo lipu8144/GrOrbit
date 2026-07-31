@@ -959,12 +959,12 @@ const plans = [
     features: ["QR Menu", "Basic Ordering", "Unlimited Menu Items", "Single Location"],
   },
   {
-    name: "Growth", price: "₹399", period: "/month", desc: "For restaurants serious about growth.",
+    name: "Growth", price: "₹0", period: "/month", desc: "For restaurants serious about growth.",
     cta: "Start free trial", popular: true,
     features: ["Everything in Free", "Customer Capture", "Review Collection", "Social Growth Tools", "Coupon System"],
   },
   {
-    name: "Pro", price: "₹999", period: "/month", desc: "For multi-branch operations.",
+    name: "Pro", price: "₹0", period: "/month", desc: "For multi-branch operations.",
     cta: "Contact sales", popular: false,
     features: ["Everything in Growth", "Multi Branch Support", "Advanced Analytics", "Staff Management", "Priority Support"],
   },
