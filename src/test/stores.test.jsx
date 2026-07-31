@@ -523,3 +523,16 @@ describe("image upload feedback + text limits", () => {
     expect(mi).toMatch(/maxLength=\{200\}/);  // item description
   });
 });
+
+describe("new-order sound works after login on any device", () => {
+  it("resumes a suspended AudioContext on first interaction and before playing", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/orders/LiveOrders.jsx", "utf8");
+    // unlock on first user gesture
+    expect(src).toMatch(/audioCtx\.current\.state === "suspended"\) audioCtx\.current\.resume\(\)/);
+    // also attempt resume right before playing the chime
+    expect(src).toMatch(/if \(ctx\.state === "suspended"\) ctx\.resume\(\)/);
+    // and a hint telling the owner to tap once
+    expect(src).toMatch(/enable the new-order sound/);
+  });
+});

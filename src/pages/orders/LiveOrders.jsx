@@ -397,12 +397,36 @@ export default function LiveOrders() {
 
   // ISSUE 2: audible alert repeating while any NEW order is awaiting accept/reject
   const newCount = orders.filter(o => o.status === "new").length;
+
+  // Browsers block audio until the user interacts with the page: an AudioContext
+  // starts "suspended" and stays silent until a click/tap/key resumes it. On a
+  // fresh login the owner hasn't clicked yet, so the chime never plays. Unlock it
+  // on the first interaction of the session.
+  const audioUnlocked = useRef(false);
+  const [showSoundHint, setShowSoundHint] = useState(true);
+  useEffect(() => {
+    const unlock = () => {
+      try {
+        if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.current.state === "suspended") audioCtx.current.resume();
+        audioUnlocked.current = true;
+        setShowSoundHint(false);
+      } catch {}
+    };
+    const evts = ["pointerdown", "keydown", "touchstart", "click"];
+    evts.forEach((e) => window.addEventListener(e, unlock, { once: false, passive: true }));
+    return () => evts.forEach((e) => window.removeEventListener(e, unlock));
+  }, []);
+
   useEffect(() => {
     const play = () => {
       if (muted || newCount === 0) return;
       try {
         if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
         const ctx = audioCtx.current;
+        // If still suspended (no interaction yet), try to resume; it will start
+        // producing sound as soon as the browser allows.
+        if (ctx.state === "suspended") ctx.resume().catch(() => {});
         [0, 0.18].forEach((t, i) => {
           const osc = ctx.createOscillator(), gain = ctx.createGain();
           osc.type = "sine"; osc.frequency.value = i === 0 ? 880 : 1174;
@@ -554,6 +578,12 @@ export default function LiveOrders() {
             </button>
           </div>
         </div>
+
+        {showSoundHint && !muted && (
+          <div className="mb-4 rounded-xl px-4 py-2.5 text-sm font-semibold flex items-center gap-2" style={{ background: "#FEF9C3", color: "#854D0E", border: "1px solid #FDE68A" }}>
+            <Bell size={15} /> Tap anywhere once to enable the new-order sound alert on this device.
+          </div>
+        )}
 
         {/* ── Stats ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
