@@ -572,8 +572,10 @@ function ReviewScreen({ settings, restaurant, order, onDone, onBack }) {
   // Unlock the reward — called ONLY after the customer leaves a Google review.
   const unlockReward = () => {
     setReviewDone(true);
-    if (!g.coupon.on) return;
-    if (!COUPONS_REMOTE) { setNextCode(g.coupon.code); return; }
+    // Unified gate: the next-visit reward is controlled by growth.nextVisit.on
+    // (set in Storefront OR Settings→Ordering — they're the same field now).
+    if (!rw.on) return;
+    if (!COUPONS_REMOTE) { setNextCode(`NEXT-${(rw.type === "percent" ? rwValue + "PCT" : rwValue)}`); return; }
     if (!order?.id) return;
     if (!order?.phone) { setGiftNeedPhone(true); return; }   // capture moment!
     issueNext(order.phone);
@@ -640,7 +642,7 @@ function ReviewScreen({ settings, restaurant, order, onDone, onBack }) {
           </button>
         )}
 
-        {g.coupon.on && (
+        {rw.on && (
           <div className="rounded-2xl p-5 text-white" style={{ background: `linear-gradient(135deg, #8B5CF6, #6D28D9)` }}>
             <div className="flex items-center gap-2 mb-1"><Gift size={18} /><span className="font-bold text-sm">A gift for your next visit</span></div>
             {!reviewDone && !nextCode ? (
@@ -657,7 +659,7 @@ function ReviewScreen({ settings, restaurant, order, onDone, onBack }) {
             ) : (
               <>
                 {nextCode && <><p className="text-2xl font-extrabold tracking-wide font-mono">{nextCode}</p>
-                  <p className="text-sm text-white/85">{COUPONS_REMOTE ? `${rwLabel} on your next order` : g.coupon.desc}</p>
+                  <p className="text-sm text-white/85">{COUPONS_REMOTE ? `${rwLabel} on your next order` : rwLabel}</p>
                   <a href={waSaveLink(nextCode, restaurant, g.whatsapp?.number)} target="_blank" rel="noreferrer"
                      className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg mt-2 bg-white/20 border border-white/40">
                     <MessageCircle size={13} /> Save code to WhatsApp

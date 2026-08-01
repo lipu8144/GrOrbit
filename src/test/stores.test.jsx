@@ -536,3 +536,17 @@ describe("new-order sound works after login on any device", () => {
     expect(src).toMatch(/enable the new-order sound/);
   });
 });
+
+describe("next-visit reward is one unified setting", () => {
+  it("Storefront edits the same growth.nextVisit field as Settings", async () => {
+    const fs = await import("fs");
+    const sf = fs.readFileSync("src/pages/Storefront.jsx", "utf8");
+    // Storefront reads/writes growth.nextVisit (not the old growth.coupon)
+    expect(sf).toMatch(/nextVisit: \{ \.\.\.nv, \.\.\.patch \}/);
+    expect(sf).toMatch(/Next-visit reward/);
+    // the customer flow gates on nextVisit.on, not the old coupon.on
+    const menu = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    expect(menu).toMatch(/if \(!rw\.on\) return;/);
+    expect(menu).not.toMatch(/if \(!g\.coupon\.on\)/);
+  });
+});

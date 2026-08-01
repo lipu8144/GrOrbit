@@ -33,6 +33,7 @@ const NEUTRAL_SETTINGS = {
     facebook: { url: "", on: false },
     whatsapp: { number: "", on: false },
     coupon: { code: "COMEBACK50", desc: "₹50 off your next visit", on: true },
+    nextVisit: { type: "flat", value: 50, minOrder: 0, days: 30, on: false },
   },
 };
 
@@ -56,6 +57,7 @@ export const DEFAULT_SETTINGS = {
     facebook: { url: "https://facebook.com/spicejunction", on: true },
     whatsapp: { number: "+91 98765 43210", on: true },
     coupon: { code: "COMEBACK50", desc: "₹50 off your next visit", on: true },
+    nextVisit: { type: "flat", value: 50, minOrder: 199, days: 30, on: true },
   },
 };
 

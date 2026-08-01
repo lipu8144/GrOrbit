@@ -21,6 +21,10 @@ export default function Storefront() {
   const set = (patch) => setS((p) => ({ ...p, ...patch }));
   const setContact = (patch) => setS((p) => ({ ...p, contact: { ...p.contact, ...patch } }));
   const setGrowth = (key, patch) => setS((p) => ({ ...p, growth: { ...p.growth, [key]: { ...p.growth[key], ...patch } } }));
+  // The next-visit reward lives at growth.nextVisit — the SAME field the customer
+  // feedback screen reads to mint coupons, and the same one Settings→Ordering edits.
+  const nv = { type: "flat", value: 50, minOrder: 0, days: 30, on: false, ...(s.growth?.nextVisit || {}) };
+  const setNv = (patch) => setS((p) => ({ ...p, growth: { ...p.growth, nextVisit: { ...nv, ...patch } } }));
   const save = () => { updateRestaurant(s); setFlash(true); setTimeout(() => setFlash(false), 1600); };
 
   // offers
@@ -130,16 +134,36 @@ export default function Storefront() {
               <div className="pt-5"><Toggle checked={s.growth[row.key].on} onChange={(v) => setGrowth(row.key, { on: v })} label={row.label} /></div>
             </div>
           ))}
-          {/* coupon */}
+          {/* next-visit reward — the SAME reward configured here and in Settings→Ordering */}
           <div className="rounded-xl border border-gray-100 p-3.5 bg-gray-50/50">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold flex items-center gap-2" style={{ color: CHARCOAL }}><Gift size={15} style={{ color: "#8B5CF6" }} />Next-visit coupon</span>
-              <Toggle checked={s.growth.coupon.on} onChange={(v) => setGrowth("coupon", { on: v })} label="Coupon" />
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-bold flex items-center gap-2" style={{ color: CHARCOAL }}><Gift size={15} style={{ color: "#8B5CF6" }} />Next-visit reward</span>
+              <Toggle checked={!!nv.on} onChange={(v) => setNv({ on: v })} label="Next-visit reward" />
             </div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div><Label>Code</Label><input value={s.growth.coupon.code} onChange={(e) => setGrowth("coupon", { code: e.target.value })} className={field + " font-mono"} /></div>
-              <div><Label>Description</Label><input value={s.growth.coupon.desc} onChange={(e) => setGrowth("coupon", { desc: e.target.value })} className={field} /></div>
-            </div>
+            <p className="text-xs text-gray-400 mb-2">The personal coupon each customer gets after ordering, to bring them back. Auto-generated per customer — you set the rule, we mint the codes.</p>
+            {nv.on && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Type</Label>
+                  <select value={nv.type} onChange={(e) => setNv({ type: e.target.value })} className={field}>
+                    <option value="flat">₹ flat off</option>
+                    <option value="percent">% percent off</option>
+                  </select>
+                </div>
+                <div>
+                  <Label>{nv.type === "percent" ? "Percent" : "Amount ₹"}</Label>
+                  <input type="number" min="1" value={nv.value} onChange={(e) => setNv({ value: +e.target.value || 0 })} className={field} />
+                </div>
+                <div>
+                  <Label>Min order ₹</Label>
+                  <input type="number" min="0" value={nv.minOrder} onChange={(e) => setNv({ minOrder: +e.target.value || 0 })} className={field} />
+                </div>
+                <div>
+                  <Label>Valid for (days)</Label>
+                  <input type="number" min="1" value={nv.days} onChange={(e) => setNv({ days: +e.target.value || 0 })} className={field} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </Card>

@@ -90,7 +90,7 @@ describe("JOURNEY: storefront edit reaches the customer page", () => {
   it("prep time saved in dashboard shows on the QR menu", async () => {
     demoLogin();
     renderAt("/app/storefront");
-    const num = await screen.findByRole("spinbutton");
+    const num = screen.getAllByRole("spinbutton")[0];   // prep-time is the first number field
     fireEvent.change(num, { target: { value: "25" } });
     fireEvent.click(screen.getByText(/Save changes/i));
     cleanup();
