@@ -98,8 +98,18 @@ if (REMOTE) onTenantChange(() => {
   listeners.forEach((l) => l());
 });
 async function rFetch() {
-  const { data, error } = await sb.from("restaurants").select("settings, menu_session_mins").eq("id", rid()).single();
-  if (error) { console.error("settings fetch:", error.message); return; }
+  // maybeSingle() so a 0-row match doesn't throw; we can then report it clearly.
+  const { data, error } = await sb.from("restaurants").select("settings, menu_session_mins").eq("id", rid()).maybeSingle();
+  if (error) {
+    // Silently returning here left the dashboard showing blank settings with no
+    // hint why — which looked exactly like "my banner and details vanished".
+    reportError(`Couldn’t load your restaurant settings: ${error.message}`);
+    return;
+  }
+  if (!data) {
+    reportError("Couldn’t load your restaurant settings — this restaurant wasn’t found for your account. Try logging out and back in.");
+    return;
+  }
   const merged = { ...(REMOTE ? NEUTRAL_SETTINGS : DEFAULT_SETTINGS), ...(data?.settings || {}), menuSessionMins: data?.menu_session_mins ?? 0 };
   try { localStorage.setItem(KEY, JSON.stringify(merged)); } catch {}
   listeners.forEach((l) => l());
@@ -108,7 +118,9 @@ async function rFetch() {
 export function getRestaurant() {
   if (REMOTE && !remoteLoaded) {
     remoteLoaded = true;
-    rFetch();
+    // If the first load fails, allow a later attempt rather than leaving the
+    // dashboard permanently blank for this session.
+    rFetch().catch(() => { remoteLoaded = false; });
     rtChannel = sb.channel("restaurant-live-" + rid())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "restaurants", filter: `id=eq.${rid()}` }, () => rFetch())
       .subscribe();
