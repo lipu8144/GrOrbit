@@ -111,12 +111,16 @@ export function saveItem(data) {
     const row = {
       restaurant_id: rid(), name: data.name, description: data.desc || "",
       price: data.price, food_type: data.type, category_id: catIdByName(data.category),
-      image_url: data.image || "", status: data.status || "active",
+      status: data.status || "active",
       popular: !!data.popular, special: !!data.special,
     };
+    // Only touch image_url when the caller actually supplied a value. Writing
+    // `data.image || ""` on every save erased the existing photo whenever the
+    // form submitted without it (mid-upload, partial edit, stale form state).
+    if (data.image !== undefined) row.image_url = data.image || "";
     const q = data.id
       ? sb.from("menu_items").update(row).eq("id", data.id)
-      : sb.from("menu_items").insert(row);
+      : sb.from("menu_items").insert({ image_url: "", ...row });
     q.then(err("save item")).then(rFetch);
     return;
   }
@@ -157,6 +161,17 @@ export function renameCategory(id, name) {
   if (readOnlyBlocked()) return;
   if (REMOTE) { sb.from("menu_categories").update({ name }).eq("id", id).then(err("rename category")).then(rFetch); return; }
   lWrite(CKEY, lCats().map((c) => (c.id === id ? { ...c, name } : c)));
+}
+
+// Change a category's icon without touching its name or items.
+export function setCategoryEmoji(id, emoji) {
+  if (readOnlyBlocked()) return;
+  if (REMOTE) {
+    if (!requireTenant("change the category icon")) return;
+    sb.from("menu_categories").update({ emoji }).eq("id", id).then(err("update category icon")).then(rFetch);
+    return;
+  }
+  lWrite(CKEY, lCats().map((c) => (c.id === id ? { ...c, emoji } : c)));
 }
 export function toggleCategory(id) {
   if (readOnlyBlocked()) return;

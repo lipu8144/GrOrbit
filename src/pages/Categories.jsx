@@ -2,14 +2,36 @@ import { useState } from "react";
 import { FolderTree, Plus, Edit2, Trash2 } from "lucide-react";
 import { BRAND, CHARCOAL } from "../lib/theme";
 import { Card, StatCard, Button, Toggle, EmptyState } from "../components/ui/primitives";
-import { useMenuCategories, addCategory, renameCategory, toggleCategory, deleteCategory, moveCategory } from "../lib/menuStore";
+import { useMenuCategories, addCategory, renameCategory, setCategoryEmoji, toggleCategory, deleteCategory, moveCategory } from "../lib/menuStore";
 
-const EMOJIS = ["🍔", "🍕", "☕", "🍰", "🥤", "🍱", "🌮", "🍜", "🥗", "🍦", "🍗", "🧁"];
+const EMOJIS = [
+  // Indian mains & breads
+  "🍛", "🍚", "🫓", "🥘", "🍲", "🫔", "🥟", "🍢",
+  // snacks & street food
+  "🌮", "🌯", "🥪", "🍟", "🧆", "🥠", "🍿", "🥯",
+  // mains & fast food
+  "🍔", "🍕", "🍜", "🍝", "🌭", "🥙", "🍳", "🥞",
+  // non-veg
+  "🍗", "🍖", "🥩", "🍤", "🐟", "🦐", "🥚", "🍣",
+  // veg & healthy
+  "🥗", "🥦", "🥕", "🌽", "🍅", "🥑", "🧀", "🫘",
+  // rice, noodles & sides
+  "🍱", "🍙", "🍘", "🥡", "🍠", "🥔", "🫕", "🧅",
+  // sweets & desserts
+  "🍰", "🧁", "🍦", "🍨", "🍩", "🍪", "🍫", "🍮",
+  "🎂", "🥧", "🍬", "🍯", "🥮", "🍡", "🍧", "🫖",
+  // drinks
+  "☕", "🥤", "🧃", "🧋", "🍵", "🥛", "🧊", "🍹",
+  "🍺", "🍷", "🥂", "🍸", "🥥", "🍋", "🍊", "🥭",
+  // fruits & misc
+  "🍎", "🍌", "🍉", "🍇", "🍓", "🍍", "🥜", "🌶️",
+];
 
 export default function Categories() {
   const cats = useMenuCategories();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [iconFor, setIconFor] = useState(null);   // which category's icon picker is open
   const rename = (id, name) => { if (name.trim()) renameCategory(id, name.trim()); setEditing(null); };
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("🍔");
@@ -46,10 +68,10 @@ export default function Categories() {
           <p className="text-sm font-bold mb-3" style={{ color: CHARCOAL }}>New category</p>
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Icon</label>
-              <div className="flex flex-wrap gap-1.5 max-w-[280px]">
+              <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Icon <span className="font-normal text-gray-300">· scroll for more</span></label>
+              <div className="grid grid-cols-8 gap-1.5 w-[300px] max-h-[132px] overflow-y-auto pr-1 rounded-xl border border-gray-100 p-2 bg-gray-50/50">
                 {EMOJIS.map((e) => (
-                  <button key={e} onClick={() => setEmoji(e)} className="w-9 h-9 rounded-lg text-lg grid place-items-center border transition" style={emoji === e ? { borderColor: BRAND, background: "#F6EFE6" } : { borderColor: "#E5E7EB" }}>{e}</button>
+                  <button key={e} onClick={() => setEmoji(e)} className="w-8 h-8 rounded-lg text-lg grid place-items-center border transition shrink-0" style={emoji === e ? { borderColor: BRAND, background: "#F6EFE6" } : { borderColor: "transparent", background: "#fff" }}>{e}</button>
                 ))}
               </div>
             </div>
@@ -74,7 +96,19 @@ export default function Categories() {
                   <button onClick={() => move(c.id, -1)} disabled={idx === 0} className="hover:text-gray-500 disabled:opacity-30 text-xs leading-none">▲</button>
                   <button onClick={() => move(c.id, 1)} disabled={idx === cats.length - 1} className="hover:text-gray-500 disabled:opacity-30 text-xs leading-none">▼</button>
                 </div>
-                <div className="w-11 h-11 rounded-xl grid place-items-center text-xl shrink-0" style={{ background: c.color }}>{c.emoji}</div>
+                <div className="relative shrink-0">
+                  <button onClick={() => setIconFor(iconFor === c.id ? null : c.id)} title="Change icon"
+                    className="w-11 h-11 rounded-xl grid place-items-center text-xl transition hover:ring-2 hover:ring-offset-1" style={{ background: c.color }}>{c.emoji}</button>
+                  {iconFor === c.id && (
+                    <div className="absolute z-20 mt-1 left-0 grid grid-cols-8 gap-1 w-[292px] max-h-[150px] overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+                      {EMOJIS.map((e) => (
+                        <button key={e} onClick={() => { setCategoryEmoji(c.id, e); setIconFor(null); }}
+                          className="w-8 h-8 rounded-lg text-lg grid place-items-center border transition hover:bg-gray-50"
+                          style={c.emoji === e ? { borderColor: BRAND, background: "#F6EFE6" } : { borderColor: "transparent" }}>{e}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div className="flex-1 min-w-0">
                   {editing === c.id ? (
                     <input autoFocus defaultValue={c.name} onBlur={(e) => rename(c.id, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") rename(c.id, e.target.value); }} className="text-sm font-bold px-2 py-1 border border-gray-200 rounded-lg qm-focus w-full max-w-[200px]" style={{ color: CHARCOAL }} />

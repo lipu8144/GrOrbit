@@ -550,3 +550,63 @@ describe("next-visit reward is one unified setting", () => {
     expect(menu).not.toMatch(/if \(!g\.coupon\.on\)/);
   });
 });
+
+describe("landing navbar is mobile-safe", () => {
+  it("header stays opaque when the mobile menu is open", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/Landing.jsx", "utf8");
+    // a transparent header with a white dropdown below looks broken — must be opaque when open
+    expect(src).toMatch(/scrolled \|\| open \?/);
+  });
+  it("mobile menu can scroll and toggles to a close icon", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/Landing.jsx", "utf8");
+    expect(src).toMatch(/max-h-\[calc\(100vh-60px\)\] overflow-y-auto/);
+    expect(src).toMatch(/\{open \? <X size=\{20\} \/> : <Menu size=\{20\} \/>\}/);
+  });
+});
+
+describe("category icons", () => {
+  it("offers a wide icon set suited to Indian restaurants", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/Categories.jsx", "utf8");
+    const block = src.split("const EMOJIS = [")[1].split("];")[0];
+    const count = (block.match(/"/g) || []).length / 2;
+    expect(count).toBeGreaterThan(60);          // was 12
+    expect(block).toContain("🍛");               // curry
+    expect(block).toContain("🫓");               // flatbread/roti
+    expect(block).toContain("🧆");               // falafel/pakora
+    expect(block).toContain("🧋");               // bubble tea
+  });
+  it("an existing category's icon can be changed", async () => {
+    const menu = await import("../lib/menuStore");
+    expect(typeof menu.setCategoryEmoji).toBe("function");
+    menu.addCategory({ name: "IconTest", emoji: "🍔" });
+    const cat = menu.getMenuCategories().find((c) => c.name === "IconTest");
+    menu.setCategoryEmoji(cat.id, "🍛");
+    expect(menu.getMenuCategories().find((c) => c.id === cat.id).emoji).toBe("🍛");
+  });
+});
+
+describe("updates must never erase existing data", () => {
+  it("settings merge against the DATABASE, not stale localStorage", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/lib/restaurantStore.js", "utf8");
+    // must re-read current settings from the DB before writing the merged blob
+    expect(src).toMatch(/select\("settings"\)\.eq\("id", rid\(\)\)/);
+    expect(src).toMatch(/const merged = \{ \.\.\.\(cur\?\.settings \|\| \{\}\), \.\.\.patch \}/);
+    // and must NOT blindly overwrite with the local copy
+    expect(src).not.toMatch(/const next = \{ \.\.\.read\(\), \.\.\.patch \};\s*\n\s*write\(next\);\s*\n\s*if \(REMOTE\)/);
+  });
+  it("nested settings objects are merged, not clobbered by a partial patch", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/lib/restaurantStore.js", "utf8");
+    expect(src).toMatch(/for \(const key of \["contact", "growth", "ordering", "closedDays"\]\)/);
+  });
+  it("saving an item without an image does not erase the existing photo", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/lib/menuStore.js", "utf8");
+    expect(src).toMatch(/if \(data\.image !== undefined\) row\.image_url = data\.image \|\| "";/);
+    expect(src).not.toMatch(/image_url: data\.image \|\| "", status:/);
+  });
+});

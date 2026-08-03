@@ -115,18 +115,32 @@ export function getRestaurant() {
   }
   return read();
 }
-export function updateRestaurant(patch) {
+export async function updateRestaurant(patch) {
   if (readOnlyBlocked()) return;
-  const next = { ...read(), ...patch };
-  write(next);
-  if (REMOTE) {
-    if (!requireTenant("save your settings")) return;
-    sb.from("restaurants").update({ settings: next }).eq("id", rid()).select("id")
-      .then(({ data, error }) => {
-        if (error) return reportError(`Couldn’t save settings: ${error.message}`);
-        if (!data || data.length === 0) reportError("Couldn’t save settings — this restaurant wasn’t found for your account.");
-      });
+  // Optimistically update the local copy so the UI responds immediately.
+  write({ ...read(), ...patch });
+  if (!REMOTE) return;
+  if (!requireTenant("save your settings")) return;
+  // CRITICAL: merge against the CURRENT DATABASE settings, not localStorage.
+  // Writing `{...read(), ...patch}` straight to the settings column overwrites
+  // the whole JSON blob — so a stale/partial local copy (new device, cleared
+  // site data, second tab) would erase fields it didn't know about, which is
+  // how banners, logos and address details were being wiped on unrelated saves.
+  const { data: cur, error: readErr } = await sb
+    .from("restaurants").select("settings").eq("id", rid()).maybeSingle();
+  if (readErr) return reportError(`Couldn’t save settings: ${readErr.message}`);
+  const merged = { ...(cur?.settings || {}), ...patch };
+  // keep nested objects from being clobbered by a partial patch
+  for (const key of ["contact", "growth", "ordering", "closedDays"]) {
+    if (patch[key] && typeof patch[key] === "object" && !Array.isArray(patch[key])) {
+      merged[key] = { ...(cur?.settings?.[key] || {}), ...patch[key] };
+    }
   }
+  const { data, error } = await sb
+    .from("restaurants").update({ settings: merged }).eq("id", rid()).select("id");
+  if (error) return reportError(`Couldn’t save settings: ${error.message}`);
+  if (!data || data.length === 0) return reportError("Couldn’t save settings — this restaurant wasn’t found for your account.");
+  write({ ...read(), ...merged });   // resync local copy with what's actually stored
 }
 
 // The restaurant's display name lives on the restaurants ROW (not settings).

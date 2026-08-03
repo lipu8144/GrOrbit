@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Link } from "react-router-dom";
 import {
   QrCode, Utensils, ChefHat, TrendingUp, Star,
-  Gift, Users, BarChart3, Menu, Check, ArrowDown,
+  Gift, Users, BarChart3, Menu, X, Check, ArrowDown,
   Zap, Repeat, Instagram, Facebook, Twitter, ShoppingBag, ClipboardList, Award,
   ChevronRight, Store, Megaphone, Database,
   DollarSign, Activity, LineChart, MessageCircle, Bell,
@@ -56,9 +56,9 @@ function Navbar() {
   }, []);
   const links = ["Features", "How it works", "Pricing", "Contact"];
   return (
-    <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "bg-white/96 backdrop-blur-xl border-b border-[#E5E7EB] shadow-sm" : "bg-transparent"}`}>
-      <div className="max-w-6xl mx-auto px-5 h-[60px] flex items-center justify-between">
-        <a href="#" className="flex items-center gap-2">
+    <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled || open ? "bg-white/96 backdrop-blur-xl border-b border-[#E5E7EB] shadow-sm" : "bg-transparent"}`}>
+      <div className="max-w-6xl mx-auto px-5 h-[60px] flex items-center justify-between gap-3">
+        <a href="#" className="flex items-center gap-2 shrink-0" onClick={() => setOpen(false)}>
           <img src="/grorbit-icon.png" alt="GrOrbit" className="h-9 w-9 sm:hidden rounded-xl" />
           <img src="/grorbit-logo.png" alt="GrOrbit" className="h-7 w-auto hidden sm:block" />
         </a>
@@ -71,14 +71,17 @@ function Navbar() {
           <Link to="/login" className="text-[13.5px] font-medium text-foreground hover:opacity-70 transition-opacity" style={{ fontFamily: "var(--font-body)" }}>Log in</Link>
           <Link to="/login" className="text-[13.5px] font-semibold text-white px-4 py-2 rounded-xl hover:opacity-90 transition-opacity" style={{ background: CORAL, fontFamily: "var(--font-body)" }}>Start free</Link>
         </div>
-        <button onClick={() => setOpen(!open)} className="md:hidden p-2 rounded-lg hover:bg-muted transition-colors"><Menu size={20} /></button>
+        <button onClick={() => setOpen(!open)} aria-label={open ? "Close menu" : "Open menu"} aria-expanded={open}
+          className="md:hidden p-2 -mr-2 shrink-0 rounded-lg hover:bg-muted transition-colors">
+          {open ? <X size={20} /> : <Menu size={20} />}
+        </button>
       </div>
       {open && (
-        <div className="md:hidden bg-white border-b border-border px-5 py-4 flex flex-col gap-3">
-          {links.map(l => <a key={l} href={`#${l.toLowerCase().replace(/ /g, "-")}`} onClick={() => setOpen(false)} className="text-sm font-medium py-1">{l}</a>)}
-          <div className="flex items-center gap-3 pt-2 border-t border-border">
-            <Link to="/login" onClick={() => setOpen(false)} className="text-sm font-medium">Log in</Link>
-            <Link to="/login" onClick={() => setOpen(false)} className="text-sm font-semibold text-white px-4 py-2 rounded-xl" style={{ background: CORAL }}>Start free</Link>
+        <div className="md:hidden bg-white border-b border-border px-5 py-4 flex flex-col gap-3 max-h-[calc(100vh-60px)] overflow-y-auto">
+          {links.map(l => <a key={l} href={`#${l.toLowerCase().replace(/ /g, "-")}`} onClick={() => setOpen(false)} className="text-sm font-medium py-2">{l}</a>)}
+          <div className="flex items-center gap-3 pt-3 border-t border-border">
+            <Link to="/login" onClick={() => setOpen(false)} className="text-sm font-medium py-2 px-1">Log in</Link>
+            <Link to="/login" onClick={() => setOpen(false)} className="text-sm font-semibold text-white px-4 py-2.5 rounded-xl" style={{ background: CORAL }}>Start free</Link>
           </div>
         </div>
       )}
