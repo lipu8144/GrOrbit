@@ -35,6 +35,10 @@ const slugify = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|
 async function ensureRestaurant(user) {
   const { data: mine, error } = await sb.from("restaurants")
     .select("id, slug, name").eq("owner_id", user.id).limit(1);
+  // CRITICAL: if the lookup itself FAILED we must not fall through to insert —
+  // a transient RLS/permission/network error would otherwise create a SECOND
+  // restaurant for an owner who already has one (the cause of duplicates in
+  // the admin list). Bail out and let the next attempt resolve it.
   if (error) { console.error("restaurant lookup:", error.message); return null; }
   if (mine?.length) return mine[0];
   const rname = (user.user_metadata?.restaurant || "").trim() ||
@@ -47,7 +51,14 @@ async function ensureRestaurant(user) {
       settings: ownerPhone ? { contact: { phone: ownerPhone } } : {},
     })
     .select("id, slug, name").single();
-  if (e2) { console.error("restaurant create:", e2.message); return null; }
+  if (e2) {
+    console.error("restaurant create:", e2.message);
+    // Another tab/attempt may have won the race and created it — re-check
+    // rather than leaving the session without a restaurant.
+    const { data: retry } = await sb.from("restaurants")
+      .select("id, slug, name").eq("owner_id", user.id).limit(1);
+    return retry?.length ? retry[0] : null;
+  }
   // a starter category so the very first "Add item" has somewhere to live
   await sb.from("menu_categories").insert({ restaurant_id: created.id, name: "Menu", emoji: "🍽️", sort: 1 });
   return created;
