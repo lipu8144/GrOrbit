@@ -806,3 +806,34 @@ describe("the customer menu uses one card layout for every item", () => {
     expect(src).toMatch(/extra\$\{addons\.length > 1 \? "s" : ""\} available/);
   });
 });
+
+describe("session expiry can only be cleared by a real rescan", () => {
+  it("a genuine rescan starts a fresh session instead of staying expired", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    // without this, the stale activity stamp would keep the customer expired
+    // forever — even after physically scanning the QR again
+    expect(src).toMatch(/const isFreshScan = \(\) => \{/);
+    expect(src).toMatch(/if \(isFreshScan\(\)\) return false;/);
+  });
+
+  it("the scan marker is consumed so a refresh can't reuse it", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    // the ?src=qr param must be stripped after it's used, otherwise it sits in
+    // the address bar and makes the timeout unenforceable on refresh
+    expect(src).toMatch(/\["src", "scan", "fresh"\]\.forEach\(\(k\) => url\.searchParams\.delete\(k\)\)/);
+    expect(src).toMatch(/window\.history\.replaceState/);
+  });
+
+  it("neither expiry screen offers a one-tap bypass", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    // the idle screen used to have a "Scan again" button wired to reset(),
+    // which put the customer straight back in without scanning anything
+    expect(src).not.toMatch(/onClick=\{reset\}[^}]*Scan again/);
+    expect(src).not.toMatch(/I'm at the restaurant — reload/);
+    // both screens now only instruct
+    expect(src).toMatch(/Please scan the QR code at your table again to continue/);
+  });
+});

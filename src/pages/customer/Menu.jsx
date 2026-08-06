@@ -942,7 +942,17 @@ function CustomerMenuInner({ restaurantName }) {
   // Inactivity window: the restaurant's configured menu-session minutes, or a
   // sensible 15-min default. (Owner sets this in Settings → Ordering.)
   const idleMins = (settings?.menuSessionMins && settings.menuSessionMins > 0) ? settings.menuSessionMins : 15;
+  // A genuine rescan carries a scan marker in the URL. That MUST start a new
+  // session — otherwise the stale activity stamp keeps the customer expired even
+  // after they physically scan the QR again, locking them out permanently.
+  const isFreshScan = () => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return p.has("src") || p.has("scan") || p.has("fresh");
+    } catch { return false; }
+  };
   const idleExceeded = () => {
+    if (isFreshScan()) return false;
     try {
       const t = Number(localStorage.getItem(ACTIVITY_KEY));
       return t && (Date.now() - t > idleMins * 60000);
@@ -958,6 +968,18 @@ function CustomerMenuInner({ restaurantName }) {
     timer.current = setTimeout(() => setExpired(true), idleMins * 60000);
   };
   useEffect(() => {
+    if (isFreshScan()) {
+      resetSession();
+      // CONSUME the scan marker: strip it from the URL so a later refresh can't
+      // reuse it to dodge the timeout. Without this the param would sit in the
+      // address bar all session and make the expiry unenforceable on refresh.
+      try {
+        const url = new URL(window.location.href);
+        ["src", "scan", "fresh"].forEach((k) => url.searchParams.delete(k));
+        window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+      } catch {}
+      return () => timer.current && clearTimeout(timer.current);
+    }
     // If they already idled past the window before this mount (e.g. refreshed
     // after stepping away), expire now instead of granting a fresh timer.
     if (idleExceeded()) { setExpired(true); return; }
@@ -1169,8 +1191,7 @@ function CustomerMenuInner({ restaurantName }) {
         <div>
           <div className="w-16 h-16 rounded-2xl bg-white border border-gray-200 grid place-items-center mx-auto mb-4"><Clock size={28} className="text-gray-300" /></div>
           <h1 className="text-xl font-extrabold" style={{ color: CHARCOAL }}>Session expired</h1>
-          <p className="text-sm text-gray-500 mt-1.5 max-w-xs">For security, your ordering session ended after {idleMins} minutes of inactivity. Please scan the QR code again.</p>
-          <button onClick={reset} className="mt-5 px-5 py-3 rounded-xl font-bold text-sm text-white inline-flex items-center gap-2" style={{ background: BRAND }}><RefreshCw size={16} />Scan again</button>
+          <p className="text-sm text-gray-500 mt-1.5 max-w-xs">For security, your ordering session ended after {idleMins} minutes of inactivity. Please scan the QR code at your table again to continue.</p>
         </div>
       </div>
     );
