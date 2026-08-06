@@ -40,10 +40,39 @@ if (REMOTE) onTenantChange(() => {
   started = false; rItems = null; rCats = null; notify();
   if (listeners.size > 0) rStart();
 });
+// Portions arrive from a jsonb column, so be defensive: keep only entries with
+// a non-empty label and a valid non-negative price, and coerce the price to a
+// number (a string "90" from an older write would break arithmetic downstream).
+export function normalisePortions(raw) { return normaliseLabelledPrices(raw); }
+
+// Add-ons share the {label, price} shape with portions, so one normaliser serves
+// both — they can't drift apart. The difference is purely in MEANING: a portion
+// price replaces the base, an add-on price is added on top.
+export function normaliseAddons(raw) { return normaliseLabelledPrices(raw); }
+
+function normaliseLabelledPrices(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  return raw
+    .map((p) => ({ label: String(p?.label ?? "").trim(), price: Number(p?.price) }))
+    .filter((p) => {
+      if (p.label === "" || !Number.isFinite(p.price) || p.price < 0) return false;
+      // Duplicate labels would collide in the cart key, so keep only the first.
+      const k = p.label.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+}
+
 const rowToItem = (r, catName) => ({
   id: r.id, name: r.name, desc: r.description || "", price: r.price,
   type: r.food_type, category: catName(r.category_id), status: r.status,
   image: r.image_url || "", popular: r.popular, special: r.special,
+  // Optional portions: [{label,price}]. Empty = single-price item.
+  portions: normalisePortions(r.portions),
+  // Optional add-ons: [{label,price}] priced as a delta on top.
+  addons: normaliseAddons(r.addons),
 });
 async function rFetch() {
   const [{ data: cats, error: e1 }, { data: items, error: e2 }] = await Promise.all([
@@ -113,6 +142,8 @@ export function saveItem(data) {
       price: data.price, food_type: data.type, category_id: catIdByName(data.category),
       status: data.status || "active",
       popular: !!data.popular, special: !!data.special,
+      portions: normalisePortions(data.portions),
+      addons: normaliseAddons(data.addons),
     };
     // Only touch image_url when the caller actually supplied a value. Writing
     // `data.image || ""` on every save erased the existing photo whenever the
@@ -125,9 +156,12 @@ export function saveItem(data) {
     return;
   }
   const prev = lItems();
+  // Normalise here too: the dual-mode contract is that demo and remote expose
+  // exactly the same shape, so `portions` must always be an array in both.
+  const row = { ...data, portions: normalisePortions(data.portions), addons: normaliseAddons(data.addons) };
   lWrite(IKEY, data.id
-    ? prev.map((i) => (i.id === data.id ? { ...i, ...data } : i))
-    : [{ ...data, id: Math.max(0, ...prev.map((p) => +p.id || 0)) + 1 }, ...prev]);
+    ? prev.map((i) => (i.id === data.id ? { ...i, ...row } : i))
+    : [{ ...row, id: Math.max(0, ...prev.map((p) => +p.id || 0)) + 1 }, ...prev]);
 }
 export function duplicateItem(item) {
   const copy = { ...item, id: undefined, name: item.name + " (copy)", special: false };

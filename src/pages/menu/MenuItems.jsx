@@ -121,7 +121,23 @@ function RowMenu({ item, onEdit, onDuplicate, onDelete, onHide }) {
 }
 
 // ── Add / Edit modal ──────────────────────────────────────────
-const EMPTY_FORM = { name: "", desc: "", category: "Burgers", price: "", type: "veg", special: false, available: true, image: "" };
+// Show portions inline in the owner's list so a mis-typed price is obvious
+// without opening the item.
+function PriceLabel({ item, className, style }) {
+  const ps = item.portions || [];
+  const as = item.addons || [];
+  const base = ps.length === 0
+    ? `₹${item.price}`
+    : ps.map((p) => `${p.label} ₹${p.price}`).join(" · ");
+  return (
+    <span className={className} style={style}>
+      {base}
+      {as.length > 0 && <span className="font-normal text-gray-400"> · +{as.length} add-on{as.length > 1 ? "s" : ""}</span>}
+    </span>
+  );
+}
+
+const EMPTY_FORM = { name: "", desc: "", category: "Burgers", price: "", type: "veg", special: false, available: true, image: "", portions: [], addons: [] };
 
 function ItemModal({ open, onClose, onSave, editing }) {
   const fileRef = useRef(null);
@@ -136,7 +152,7 @@ function ItemModal({ open, onClose, onSave, editing }) {
   if (open && initRef.current !== (editing?.id ?? "new")) {
     initRef.current = editing?.id ?? "new";
     if (editing) {
-      setForm({ name: editing.name, desc: editing.desc, category: editing.category, price: String(editing.price), type: editing.type, special: editing.special, available: editing.status !== "outofstock", image: editing.image });
+      setForm({ name: editing.name, desc: editing.desc, category: editing.category, price: String(editing.price), type: editing.type, special: editing.special, available: editing.status !== "outofstock", image: editing.image, portions: (editing.portions || []).map((p) => ({ label: p.label, price: String(p.price) })), addons: (editing.addons || []).map((a) => ({ label: a.label, price: String(a.price) })) });
       setPreview(editing.image);
     } else {
       setForm(EMPTY_FORM); setPreview("");
@@ -145,6 +161,41 @@ function ItemModal({ open, onClose, onSave, editing }) {
   if (!open) { if (initRef.current !== null) initRef.current = null; return null; }
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  // Portion editing. Prices are held as strings while typing (so a half-typed
+  // "1" doesn't become 1 and fight the input) and coerced on save.
+  const portions = form.portions || [];
+  const setPortion = (i, k, v) => setForm(f => {
+    const next = [...(f.portions || [])];
+    next[i] = { ...next[i], [k]: v };
+    return { ...f, portions: next };
+  });
+  const addPortion = () => setForm(f => {
+    const cur = f.portions || [];
+    // Starting portions seeds a PAIR: a lone portion would leave the other size
+    // unorderable, because once portions exist the base price is never shown.
+    if (cur.length === 0) {
+      return { ...f, portions: [
+        { label: "Half", price: "" },
+        { label: "Full", price: String(f.price || "") },
+      ] };
+    }
+    return { ...f, portions: [...cur, { label: "", price: "" }] };
+  });
+  const removePortion = (i) => setForm(f => ({ ...f, portions: (f.portions || []).filter((_, j) => j !== i) }));
+  const usePortions = portions.length > 0;
+
+  // Add-ons. Same {label, price} editing shape as portions, but a SINGLE add-on
+  // is perfectly valid — unlike portions, extras don't replace anything, so one
+  // extra leaves nothing unorderable.
+  const addons = form.addons || [];
+  const setAddon = (i, k, v) => setForm(f => {
+    const next = [...(f.addons || [])];
+    next[i] = { ...next[i], [k]: v };
+    return { ...f, addons: next };
+  });
+  const addAddon = () => setForm(f => ({ ...f, addons: [...(f.addons || []), { label: "", price: "" }] }));
+  const removeAddon = (i) => setForm(f => ({ ...f, addons: (f.addons || []).filter((_, j) => j !== i) }));
+  const useAddons = addons.length > 0;
   const onFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -159,7 +210,47 @@ function ItemModal({ open, onClose, onSave, editing }) {
     if (res.ok) { set("image", res.url); reportSuccess("Image uploaded ✓"); }
     else { setUpErr(res.error); setPreview(form.image || ""); reportError(`Image upload failed: ${res.error}`); }
   };
-  const valid = form.name.trim() && form.price !== "" && Number(form.price) >= 0 && !uploading;
+  // Only complete portions count. A row still being typed (blank label or price)
+  // is ignored rather than saved as a broken ₹0 portion the customer could order.
+  const cleanPortions = portions
+    .map((p) => ({ label: String(p.label || "").trim(), price: Number(p.price) }))
+    .filter((p) => p.label !== "" && Number.isFinite(p.price) && p.price >= 0);
+  // Two portions with the same label would collide in the cart key.
+  const dupPortion = new Set(cleanPortions.map((p) => p.label.toLowerCase())).size !== cleanPortions.length;
+  // A half-filled portion row is a mistake worth blocking, not silently dropping.
+  const incompletePortion = portions.some((p) => {
+    const hasLabel = String(p.label || "").trim() !== "";
+    const hasPrice = String(p.price) !== "" && Number.isFinite(Number(p.price));
+    return hasLabel !== hasPrice;   // one filled, the other not
+  });
+  const portionErr = dupPortion
+    ? "Two portions have the same name — make them different."
+    : incompletePortion ? "Every portion needs both a name and a price."
+    : (portions.length === 1 || cleanPortions.length === 1)
+      ? "Add at least two portions (e.g. Half and Full). With only one, customers can't order the other size."
+      : "";
+
+  // Add-on validation. Unlike portions, ONE add-on is fine — extras don't
+  // replace anything, so a single extra leaves nothing unorderable.
+  const cleanAddons = addons
+    .map((a) => ({ label: String(a.label || "").trim(), price: Number(a.price) }))
+    .filter((a) => a.label !== "" && Number.isFinite(a.price) && a.price >= 0);
+  const dupAddon = new Set(cleanAddons.map((a) => a.label.toLowerCase())).size !== cleanAddons.length;
+  const incompleteAddon = addons.some((a) => {
+    const hasLabel = String(a.label || "").trim() !== "";
+    const hasPrice = String(a.price) !== "" && Number.isFinite(Number(a.price));
+    return hasLabel !== hasPrice;
+  });
+  // "|" and "::" are cart-key separators — a label containing them would corrupt
+  // the key and merge or split cart lines incorrectly.
+  const badChars = [...cleanAddons, ...cleanPortions].some((x) => x.label.includes("|") || x.label.includes("::"));
+  const addonErr = dupAddon
+    ? "Two add-ons have the same name — make them different."
+    : incompleteAddon ? "Every add-on needs both a name and a price."
+    : badChars ? "Names can't contain | or ::" : "";
+
+  const valid = form.name.trim() && form.price !== "" && Number(form.price) >= 0
+                && !uploading && !portionErr && !addonErr;
   const submit = () => {
     if (!valid) return;
     onSave({
@@ -168,10 +259,17 @@ function ItemModal({ open, onClose, onSave, editing }) {
       price: Number(form.price), type: form.type, special: form.special,
       status: form.available ? (editing?.status === "hidden" ? "hidden" : "active") : "outofstock",
       image: form.image, popular: editing?.popular ?? false,
+      portions: cleanPortions,
+      addons: cleanAddons,
     });
   };
 
-  const field = "w-full px-3.5 py-2.5 text-sm bg-white border border-gray-200 rounded-xl qm-focus transition";
+  // fieldBase carries no width, so a caller can size it inside a flex row.
+  // (Appending "w-24" to a class that already has "w-full" does NOT work —
+  // both set width and Tailwind's CSS order makes w-full win, which collapsed
+  // the portion name box to nothing.)
+  const fieldBase = "px-3.5 py-2.5 text-sm bg-white border border-gray-200 rounded-xl qm-focus transition";
+  const field = "w-full " + fieldBase;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -215,9 +313,95 @@ function ItemModal({ open, onClose, onSave, editing }) {
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Price (₹)</label>
+              <label className="text-xs font-semibold text-gray-500 mb-1.5 block">
+                Price (₹){usePortions && <span className="font-normal text-gray-300"> · base</span>}
+              </label>
               <input type="number" min="0" value={form.price} onChange={e => set("price", e.target.value)} placeholder="0" className={field} />
             </div>
+          </div>
+
+          {/* Portions — half plate / full plate, small / large, 250ml / 500ml … */}
+          <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold" style={{ color: CHARCOAL }}>Portions <span className="font-normal text-gray-400">· optional</span></p>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {usePortions
+                    ? "Customers choose ONE of these and pay that price. The price above is no longer shown — so list every size you sell."
+                    : "Add portions if this dish sells in more than one size (Half / Full)."}
+                </p>
+              </div>
+              <button onClick={addPortion} className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border bg-white" style={{ borderColor: BRAND, color: BRAND }}>
+                <PlusSmall size={13} />Add
+              </button>
+            </div>
+
+            {usePortions && (
+              <div className="mt-2.5 space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <span className="flex-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">Portion name</span>
+                  <span className="w-20 text-[10px] font-bold uppercase tracking-wide text-gray-400">Price ₹</span>
+                  <span className="w-8" />
+                </div>
+                {portions.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input value={p.label} maxLength={20} onChange={e => setPortion(i, "label", e.target.value)}
+                      placeholder="e.g. Half" className={fieldBase + " flex-1 min-w-0"} />
+                    <input type="number" min="0" value={p.price} onChange={e => setPortion(i, "price", e.target.value)}
+                      placeholder="0" className={fieldBase + " w-20 shrink-0"} />
+                    <button onClick={() => removePortion(i)} aria-label="Remove portion"
+                      className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-gray-400 hover:bg-white hover:text-rose-500 transition">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+                {portionErr
+                  ? <p className="text-[11px] font-bold text-rose-500">{portionErr}</p>
+                  : <p className="text-[11px] text-gray-400">Name them however you say it — “Half / Full”, “Small / Large”, “250ml / 500ml”.</p>}
+              </div>
+            )}
+          </div>
+
+          {/* Add-ons — optional extras priced ON TOP of the portion/base price */}
+          <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold" style={{ color: CHARCOAL }}>Add-ons <span className="font-normal text-gray-400">· optional</span></p>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {useAddons
+                    ? "Customers can tick any of these. The price is ADDED on top of what they've chosen."
+                    : "Extras a customer can add — “Extra cheese +₹30”, “Add egg +₹20”."}
+                </p>
+              </div>
+              <button onClick={addAddon} className="shrink-0 flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border bg-white" style={{ borderColor: BRAND, color: BRAND }}>
+                <PlusSmall size={13} />Add
+              </button>
+            </div>
+
+            {useAddons && (
+              <div className="mt-2.5 space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <span className="flex-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">Add-on name</span>
+                  <span className="w-20 text-[10px] font-bold uppercase tracking-wide text-gray-400">Extra ₹</span>
+                  <span className="w-8" />
+                </div>
+                {addons.map((a, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input value={a.label} maxLength={24} onChange={e => setAddon(i, "label", e.target.value)}
+                      placeholder="e.g. Extra cheese" className={fieldBase + " flex-1 min-w-0"} />
+                    <input type="number" min="0" value={a.price} onChange={e => setAddon(i, "price", e.target.value)}
+                      placeholder="0" className={fieldBase + " w-20 shrink-0"} />
+                    <button onClick={() => removeAddon(i)} aria-label="Remove add-on"
+                      className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-gray-400 hover:bg-white hover:text-rose-500 transition">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+                {addonErr
+                  ? <p className="text-[11px] font-bold text-rose-500">{addonErr}</p>
+                  : <p className="text-[11px] text-gray-400">Adding extras opens a customise screen for this item.</p>}
+              </div>
+            )}
           </div>
 
           <div>
@@ -357,7 +541,7 @@ function CustomerPreview({ items, special }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5"><VegMark type={i.type} size={12} /><p className="text-xs font-bold truncate" style={{ color: CHARCOAL }}>{i.name}</p></div>
                 <p className="text-[10px] text-gray-400 line-clamp-1 mt-0.5">{i.desc}</p>
-                <p className="text-xs font-bold mt-1" style={{ color: CHARCOAL }}>₹{i.price}</p>
+                <PriceLabel item={i} className="text-xs font-bold mt-1 block" style={{ color: CHARCOAL }} />
               </div>
               <button onClick={() => setCart(c => ({ ...c, [i.id]: (c[i.id] || 0) + 1 }))}
                 className="w-7 h-7 grid place-items-center rounded-lg text-white shrink-0 active:scale-90 transition" style={{ background: BRAND }}>
@@ -562,7 +746,7 @@ export default function MenuItems() {
                           </td>
                           <td className="px-3 py-3"><span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-lg whitespace-nowrap">{CAT_EMOJI[i.category]} {i.category}</span></td>
                           <td className="px-3 py-3"><VegMark type={i.type} /></td>
-                          <td className="px-3 py-3 text-right font-bold whitespace-nowrap" style={{ color: CHARCOAL }}>₹{i.price}</td>
+                          <td className="px-3 py-3 text-right font-bold whitespace-nowrap" style={{ color: CHARCOAL }}><PriceLabel item={i} /></td>
                           <td className="px-3 py-3"><StatusBadge status={i.status} /></td>
                           <td className="px-3 py-3"><div className="flex justify-center"><Toggle checked={i.status !== "outofstock"} onChange={v => toggleAvail(i, v)} label="Available" /></div></td>
                           <td className="px-3 py-3"><div className="flex justify-end"><RowMenu item={i} onEdit={openEdit} onDuplicate={duplicate} onDelete={remove} onHide={hide} /></div></td>
@@ -589,7 +773,7 @@ export default function MenuItems() {
                         <StatusBadge status={i.status} />
                       </div>
                       <div className="flex items-center justify-between mt-2.5">
-                        <span className="font-extrabold" style={{ color: CHARCOAL }}>₹{i.price}</span>
+                        <PriceLabel item={i} className="font-extrabold" style={{ color: CHARCOAL }} />
                         <Toggle checked={i.status !== "outofstock"} onChange={v => toggleAvail(i, v)} label="Available" />
                       </div>
                     </div>

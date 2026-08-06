@@ -528,10 +528,15 @@ describe("new-order sound works after login on any device", () => {
   it("resumes a suspended AudioContext on first interaction and before playing", async () => {
     const fs = await import("fs");
     const src = fs.readFileSync("src/pages/orders/LiveOrders.jsx", "utf8");
-    // unlock on first user gesture
-    expect(src).toMatch(/audioCtx\.current\.state === "suspended"\) audioCtx\.current\.resume\(\)/);
-    // also attempt resume right before playing the chime
-    expect(src).toMatch(/if \(ctx\.state === "suspended"\) ctx\.resume\(\)/);
+    // iOS needs a sound STARTED inside the gesture, not just resume()
+    expect(src).toMatch(/createBufferSource\(\)/);
+    expect(src).toMatch(/src\.start\(0\)/);
+    // notes must be scheduled only once the context is actually running
+    expect(src).toMatch(/ctx\.resume\(\)\.then\(beep\)/);
+    // screen lock / app switch suspends the context — resume on return
+    expect(src).toMatch(/visibilitychange/);
+    // vibration fallback for phones on silent
+    expect(src).toMatch(/navigator\.vibrate\?\.\(\[100, 60, 100\]\)/);
     // and a hint telling the owner to tap once
     expect(src).toMatch(/enable the new-order sound/);
   });
@@ -608,5 +613,144 @@ describe("updates must never erase existing data", () => {
     const src = fs.readFileSync("src/lib/menuStore.js", "utf8");
     expect(src).toMatch(/if \(data\.image !== undefined\) row\.image_url = data\.image \|\| "";/);
     expect(src).not.toMatch(/image_url: data\.image \|\| "", status:/);
+  });
+});
+
+describe("item portions (half plate / full plate)", () => {
+  it("normalisePortions keeps valid rows and rejects junk", async () => {
+    const { normalisePortions } = await import("../lib/menuStore");
+    expect(normalisePortions([{ label: "Half", price: 90 }, { label: "Full", price: 160 }]))
+      .toEqual([{ label: "Half", price: 90 }, { label: "Full", price: 160 }]);
+    // string prices from an older/hand-edited write are coerced to numbers
+    expect(normalisePortions([{ label: "Half", price: "90" }])).toEqual([{ label: "Half", price: 90 }]);
+    // junk is dropped rather than breaking the customer menu
+    expect(normalisePortions([{ label: "", price: 90 }])).toEqual([]);
+    expect(normalisePortions([{ label: "Half", price: "abc" }])).toEqual([]);
+    expect(normalisePortions([{ label: "Half", price: -5 }])).toEqual([]);
+    expect(normalisePortions(null)).toEqual([]);
+    expect(normalisePortions("not-an-array")).toEqual([]);
+  });
+
+  it("portions survive a save/read round trip", async () => {
+    const menu = await import("../lib/menuStore");
+    menu.saveItem({
+      name: "Dal Fry", desc: "", category: "Burgers", price: 90, type: "veg",
+      portions: [{ label: "Half", price: 90 }, { label: "Full", price: 160 }],
+    });
+    const saved = menu.getMenuItems().find((i) => i.name === "Dal Fry");
+    expect(saved.portions).toHaveLength(2);
+    expect(saved.portions[1]).toEqual({ label: "Full", price: 160 });
+  });
+
+  it("an item with no portions is unchanged (backward compatible)", async () => {
+    const menu = await import("../lib/menuStore");
+    menu.saveItem({ name: "Filter Coffee", desc: "", category: "Burgers", price: 40, type: "veg" });
+    const saved = menu.getMenuItems().find((i) => i.name === "Filter Coffee");
+    expect(saved.portions).toEqual([]);
+  });
+
+  it("cart keys separate portions of the same dish", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    // key format and parser
+    expect(src).toMatch(/const cartKey = \(id, portion, addons\) =>/);
+    expect(src).toMatch(/function parseCartKey\(key\)/);
+    // the cart line must take its base price from the chosen portion
+    expect(src).toMatch(/price = p\.price;/);
+    // a removed/renamed portion drops the line instead of charging a stale price
+    expect(src).toMatch(/if \(!p\) return null;/);
+    // React keys in the cart drawer must include portion AND add-ons
+    expect(src).toMatch(/key=\{cartKey\(l\.id, l\.portion, \(l\.addons \|\| \[\]\)\.map\(\(a\) => a\.label\)\)\}/);
+    // the kitchen ticket names the portion
+    expect(src).toMatch(/let name = l\.portion \? `\$\{l\.name\} \(\$\{l\.portion\}\)` : l\.name;/);
+  });
+
+  it("the editor blocks duplicate and half-filled portions", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/menu/MenuItems.jsx", "utf8");
+    expect(src).toMatch(/Two portions have the same name/);
+    expect(src).toMatch(/Every portion needs both a name and a price/);
+    // incomplete rows are filtered out of what gets saved
+    expect(src).toMatch(/\.filter\(\(p\) => p\.label !== "" && Number\.isFinite\(p\.price\) && p\.price >= 0\)/);
+  });
+});
+
+describe("a single portion is not a valid configuration", () => {
+  it("the editor seeds a PAIR and refuses to save just one portion", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/menu/MenuItems.jsx", "utf8");
+    // first "Add" creates two rows, not one
+    expect(src).toMatch(/if \(cur\.length === 0\)/);
+    expect(src).toMatch(/\{ label: "Half", price: "" \}/);
+    expect(src).toMatch(/\{ label: "Full", price: String\(f\.price \|\| ""\) \}/);
+    // and a lone portion is blocked with an explanation
+    expect(src).toMatch(/Add at least two portions/);
+    // the help text warns that the base price stops being shown
+    expect(src).toMatch(/The price above is no longer shown/);
+  });
+});
+
+describe("portion editor layout", () => {
+  it("portion inputs size themselves without fighting w-full", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/menu/MenuItems.jsx", "utf8");
+    // a width-less base class exists for use inside flex rows
+    expect(src).toMatch(/const fieldBase = "px-3\.5/);
+    expect(src).toMatch(/const field = "w-full " \+ fieldBase/);
+    // the portion row uses fieldBase, never `field + " w-…"` (which collapses it)
+    expect(src).toMatch(/fieldBase \+ " flex-1 min-w-0"/);
+    expect(src).toMatch(/fieldBase \+ " w-20 shrink-0"/);
+    expect(src).not.toMatch(/field \+ " w-24"/);
+    // and the columns are labelled
+    expect(src).toMatch(/Portion name/);
+  });
+});
+
+describe("item add-ons (modifiers)", () => {
+  it("add-ons normalise like portions and drop duplicates", async () => {
+    const { normaliseAddons } = await import("../lib/menuStore");
+    expect(normaliseAddons([{ label: "Extra cheese", price: 30 }]))
+      .toEqual([{ label: "Extra cheese", price: 30 }]);
+    expect(normaliseAddons([{ label: "Cheese", price: "30" }])).toEqual([{ label: "Cheese", price: 30 }]);
+    // duplicates would collide in the cart key — only the first survives
+    expect(normaliseAddons([{ label: "Egg", price: 20 }, { label: "egg", price: 25 }]))
+      .toEqual([{ label: "Egg", price: 20 }]);
+    expect(normaliseAddons(null)).toEqual([]);
+  });
+
+  it("add-ons survive a save/read round trip and default to empty", async () => {
+    const menu = await import("../lib/menuStore");
+    menu.saveItem({
+      name: "Addon Burger", desc: "", category: "Burgers", price: 149, type: "veg",
+      addons: [{ label: "Extra cheese", price: 30 }],
+    });
+    const withAddons = menu.getMenuItems().find((i) => i.name === "Addon Burger");
+    expect(withAddons.addons).toEqual([{ label: "Extra cheese", price: 30 }]);
+
+    menu.saveItem({ name: "Plain Tea", desc: "", category: "Burgers", price: 20, type: "veg" });
+    expect(menu.getMenuItems().find((i) => i.name === "Plain Tea").addons).toEqual([]);
+  });
+
+  it("cart keys sort add-ons so the same choice merges into one line", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    // sorting is what makes {Egg,Cheese} and {Cheese,Egg} the same key
+    expect(src).toMatch(/const a = \(addons \|\| \[\]\)\.slice\(\)\.sort\(\);/);
+    // add-on prices stack ON TOP of the portion/base price
+    expect(src).toMatch(/price \+= chosen\.reduce\(\(s, a\) => s \+ a\.price, 0\);/);
+    // a deleted add-on is dropped and not charged, rather than voiding the line
+    expect(src).toMatch(/const chosen = \(m\.addons \|\| \[\]\)\.filter/);
+    // the ticket lists the extras
+    expect(src).toMatch(/name \+= ` \+ \$\{l\.addons\.map\(\(a\) => a\.label\)\.join\(", "\)\}`/);
+  });
+
+  it("the editor allows a single add-on but blocks separator characters", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/menu/MenuItems.jsx", "utf8");
+    // no "at least two" rule for add-ons (unlike portions)
+    expect(src).toMatch(/Two add-ons have the same name/);
+    expect(src).toMatch(/Every add-on needs both a name and a price/);
+    // cart-key separators must not appear in labels
+    expect(src).toMatch(/Names can't contain \| or ::/);
   });
 });
