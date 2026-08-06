@@ -459,10 +459,22 @@ const cartKey = (id, portion, addons) => {
 
 `::` and `|` are separators, so the editor rejects labels containing them.
 
-**UI split:** add-ons are multi-select and therefore need a sheet ("pick, then
-add"); portions alone stay inline, which is fewer taps. An item with add-ons shows
-a "Customisable" label and opens `CustomiseSheet` — the pattern customers already
-know from food-delivery apps.
+**One card, one sheet.** Every menu item renders through a single `ItemRow` with
+an identical shape — image right, ADD button floating on the image edge. Only the
+tap behaviour differs:
+
+| Item has | Tapping ADD |
+|---|---|
+| nothing | adds straight to the cart, then shows a stepper |
+| portions and/or add-ons | opens `CustomiseSheet` |
+
+An earlier version gave portions their own inline layout and add-ons a third
+one — three card shapes on one menu, which read as inconsistent and made
+portioned items several times taller than their neighbours. Unifying cost one
+extra tap for portions and removed two whole components.
+
+A hint line under the description ("Half · Full", "2 extras available") tells the
+customer what's inside before they tap, so ADD is never a surprise.
 
 #### Line-by-line: `saveItem` and the vanishing photos
 

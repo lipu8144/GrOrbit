@@ -54,28 +54,37 @@ function parseCartKey(key) {
   };
 }
 
+// ONE card shape for every item. What differs is only what tapping ADD does:
+// a plain item goes straight into the cart, an item with portions and/or add-ons
+// opens the choices sheet. Keeping the shape identical is what stops the menu
+// looking like three different designs stacked together.
 function ItemRow({ item, cart, onAdd, onSub, onCustomise }) {
-  const portions = item.portions || [];
-  const addons = item.addons || [];
-  // Add-ons are multi-select, so they need a sheet ("pick, then add"). Portions
-  // alone stay inline — fewer taps, and the price difference is visible up front.
-  if (addons.length > 0) return <CustomisableItemRow item={item} cart={cart} onCustomise={onCustomise} />;
-  if (portions.length > 0) return <PortionItemRow item={item} cart={cart} onAdd={onAdd} onSub={onSub} />;
-  return <SingleItemRow item={item} qty={cart[String(item.id)] || 0} onAdd={() => onAdd(null)} onSub={() => onSub(null)} />;
-}
-
-// An item with add-ons: a single CUSTOMISE button that opens the sheet. We show
-// the running total already in the cart for this item across all its variations,
-// so the customer can see they've added it without us guessing which variation.
-function CustomisableItemRow({ item, cart, onCustomise }) {
   const out = item.status === "outofstock";
   const portions = item.portions || [];
-  const from = portions.length ? Math.min(...portions.map((p) => p.price)) : item.price;
-  const inCart = Object.entries(cart)
-    .filter(([k]) => k === String(item.id) || k.startsWith(`${item.id}::`))
-    .reduce((s, [, q]) => s + q, 0);
+  const addons = item.addons || [];
+  const hasChoices = portions.length > 0 || addons.length > 0;
+
+  // Portionless items show their price; portioned ones show the cheapest as "from".
+  const priceLabel = portions.length
+    ? `from ${inr(Math.min(...portions.map((p) => p.price)))}`
+    : inr(item.price);
+
+  // Tell the customer what's inside before they tap, so ADD is never a surprise.
+  const hint = [
+    portions.length ? portions.map((p) => p.label).join(" · ") : null,
+    addons.length ? `${addons.length} extra${addons.length > 1 ? "s" : ""} available` : null,
+  ].filter(Boolean).join("  ·  ");
+
+  // For an item with choices, one card can map to several cart lines, so show
+  // the combined count rather than guessing which variation to step.
+  const qty = hasChoices
+    ? Object.entries(cart)
+        .filter(([k]) => k === String(item.id) || k.startsWith(`${item.id}::`))
+        .reduce((s, [, q]) => s + q, 0)
+    : (cart[String(item.id)] || 0);
+
   return (
-    <div className={`py-4 flex gap-3 ${out ? "opacity-60" : ""}`}>
+    <div className={`flex gap-3 py-4 ${out ? "opacity-60" : ""}`}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-0.5">
           <FoodMark type={item.type} />
@@ -83,30 +92,39 @@ function CustomisableItemRow({ item, cart, onCustomise }) {
           {item.special && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ background: "#FEF3C7", color: "#B45309" }}><Star size={9} />Special</span>}
         </div>
         <h3 className="font-bold text-[15px] leading-tight" style={{ color: CHARCOAL }}>{item.name}</h3>
-        <p className="text-sm font-semibold mt-0.5" style={{ color: CHARCOAL }}>
-          {portions.length ? `from ${inr(from)}` : inr(item.price)}
-        </p>
-        <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.desc}</p>
-        {!out && <p className="text-[10px] font-bold mt-1" style={{ color: BRAND }}>Customisable</p>}
+        <p className="text-sm font-semibold mt-0.5" style={{ color: CHARCOAL }}>{priceLabel}</p>
+        {item.desc && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.desc}</p>}
+        {hasChoices && !out && <p className="text-[10px] font-bold mt-1" style={{ color: BRAND }}>{hint}</p>}
       </div>
-      <div className="w-24 shrink-0">
+
+      <div className="relative shrink-0">
         <div className="w-24 h-24 rounded-2xl bg-gray-100 overflow-hidden">
           {item.image && <img src={item.image} alt={item.name} className="w-full h-full object-cover" loading="lazy" />}
         </div>
-        {out ? (
-          <p className="mt-1.5 text-[11px] font-bold text-gray-400 text-center">Sold out</p>
-        ) : (
-          <button onClick={() => onCustomise(item)} className="mt-1.5 w-full bg-white border rounded-lg py-1.5 text-[11px] font-extrabold active:scale-95 transition" style={{ borderColor: BRAND, color: BRAND }}>
-            {inCart > 0 ? `ADD MORE · ${inCart}` : "ADD +"}
-          </button>
-        )}
+        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-[84px]">
+          {out ? (
+            <div className="text-center text-[10px] font-bold text-gray-400 bg-white border border-gray-200 rounded-lg py-1.5 shadow-sm">Sold out</div>
+          ) : hasChoices ? (
+            // Choices always route through the sheet — including when some are
+            // already in the cart, since we can't know which variation to add.
+            <button onClick={() => onCustomise(item)} className="w-full bg-white border rounded-lg py-1.5 text-xs font-extrabold shadow-sm active:scale-95 transition" style={{ borderColor: BRAND, color: BRAND }}>
+              {qty > 0 ? `ADD +  ${qty}` : "ADD +"}
+            </button>
+          ) : qty === 0 ? (
+            <button onClick={() => onAdd(null)} className="w-full bg-white border rounded-lg py-1.5 text-xs font-extrabold shadow-sm active:scale-95 transition" style={{ borderColor: BRAND, color: BRAND }}>ADD +</button>
+          ) : (
+            <div className="w-full bg-white border rounded-lg flex items-center justify-between px-2 py-1 shadow-sm" style={{ borderColor: BRAND }}>
+              <button onClick={() => onSub(null)} className="p-0.5" style={{ color: BRAND }} aria-label="Remove one"><Minus size={14} /></button>
+              <span className="text-sm font-extrabold" style={{ color: BRAND }}>{qty}</span>
+              <button onClick={() => onAdd(null)} className="p-0.5" style={{ color: BRAND }} aria-label="Add one"><Plus size={14} /></button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// The customise sheet: choose a portion (if any), tick add-ons, see the live
-// total, then add. Mirrors what customers already know from food-delivery apps.
 function CustomiseSheet({ item, onClose, onConfirm }) {
   const portions = item.portions || [];
   const addons = item.addons || [];
@@ -188,91 +206,6 @@ function CustomiseSheet({ item, onClose, onConfirm }) {
             className="flex-1 py-3 rounded-xl font-extrabold text-white text-sm active:scale-[0.99] transition" style={{ background: BRAND }}>
             Add · {inr(each * qty)}
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PortionItemRow({ item, cart, onAdd, onSub }) {
-  const out = item.status === "outofstock";
-  const portions = item.portions || [];
-  const from = Math.min(...portions.map((p) => p.price));
-  return (
-    <div className={`py-4 ${out ? "opacity-60" : ""}`}>
-      <div className="flex gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <FoodMark type={item.type} />
-            {item.popular && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ background: "#F6EFE6", color: BRAND }}><Flame size={9} />Popular</span>}
-            {item.special && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ background: "#FEF3C7", color: "#B45309" }}><Star size={9} />Special</span>}
-          </div>
-          <h3 className="font-bold text-[15px] leading-tight" style={{ color: CHARCOAL }}>{item.name}</h3>
-          <p className="text-sm font-semibold mt-0.5" style={{ color: CHARCOAL }}>from {inr(from)}</p>
-          <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.desc}</p>
-        </div>
-        <div className="w-24 h-24 rounded-2xl bg-gray-100 overflow-hidden shrink-0">
-          {item.image && <img src={item.image} alt={item.name} className="w-full h-full object-cover" loading="lazy" />}
-        </div>
-      </div>
-      {out ? (
-        <p className="mt-2 text-[11px] font-bold text-gray-400">Sold out</p>
-      ) : (
-        <div className="mt-2.5 space-y-1.5">
-          {portions.map((p) => {
-            const qty = cart[cartKey(item.id, p.label)] || 0;
-            return (
-              <div key={p.label} className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2">
-                <span className="text-[13px] font-bold flex-1 truncate" style={{ color: CHARCOAL }}>{p.label}</span>
-                <span className="text-[13px] font-semibold" style={{ color: CHARCOAL }}>{inr(p.price)}</span>
-                {qty === 0 ? (
-                  <button onClick={() => onAdd(p.label)} className="ml-1 bg-white border rounded-lg px-3 py-1 text-[11px] font-extrabold active:scale-95 transition" style={{ borderColor: BRAND, color: BRAND }}>ADD +</button>
-                ) : (
-                  <div className="ml-1 bg-white border rounded-lg flex items-center gap-2 px-2 py-1" style={{ borderColor: BRAND }}>
-                    <button onClick={() => onSub(p.label)} className="p-0.5" style={{ color: BRAND }} aria-label={`Remove one ${p.label}`}><Minus size={13} /></button>
-                    <span className="text-[13px] font-extrabold w-3 text-center" style={{ color: BRAND }}>{qty}</span>
-                    <button onClick={() => onAdd(p.label)} className="p-0.5" style={{ color: BRAND }} aria-label={`Add one ${p.label}`}><Plus size={13} /></button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SingleItemRow({ item, qty, onAdd, onSub }) {
-  const out = item.status === "outofstock";
-  return (
-    <div className={`flex gap-3 py-4 ${out ? "opacity-60" : ""}`}>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <FoodMark type={item.type} />
-          {item.popular && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ background: "#F6EFE6", color: BRAND }}><Flame size={9} />Popular</span>}
-          {item.special && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5" style={{ background: "#FEF3C7", color: "#B45309" }}><Star size={9} />Special</span>}
-        </div>
-        <h3 className="font-bold text-[15px] leading-tight" style={{ color: CHARCOAL }}>{item.name}</h3>
-        <p className="text-sm font-semibold mt-0.5" style={{ color: CHARCOAL }}>{inr(item.price)}</p>
-        <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.desc}</p>
-      </div>
-      <div className="relative shrink-0">
-        <div className="w-24 h-24 rounded-2xl bg-gray-100 overflow-hidden">
-          {item.image && <img src={item.image} alt={item.name} className="w-full h-full object-cover" loading="lazy" />}
-        </div>
-        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-[84px]">
-          {out ? (
-            <div className="text-center text-[10px] font-bold text-gray-400 bg-white border border-gray-200 rounded-lg py-1.5 shadow-sm">Sold out</div>
-          ) : qty === 0 ? (
-            <button onClick={onAdd} className="w-full bg-white border rounded-lg py-1.5 text-xs font-extrabold shadow-sm active:scale-95 transition" style={{ borderColor: BRAND, color: BRAND }}>ADD +</button>
-          ) : (
-            <div className="w-full bg-white border rounded-lg flex items-center justify-between px-2 py-1 shadow-sm" style={{ borderColor: BRAND }}>
-              <button onClick={onSub} className="p-0.5" style={{ color: BRAND }}><Minus size={14} /></button>
-              <span className="text-sm font-extrabold" style={{ color: BRAND }}>{qty}</span>
-              <button onClick={onAdd} className="p-0.5" style={{ color: BRAND }}><Plus size={14} /></button>
-            </div>
-          )}
         </div>
       </div>
     </div>

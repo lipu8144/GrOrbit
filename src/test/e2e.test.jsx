@@ -303,23 +303,24 @@ describe("JOURNEY: ready-to-collect highlight", () => {
 });
 
 describe("JOURNEY: ordering a portion (half plate / full plate)", () => {
-  it("customer picks a portion, pays that price, and the ticket names it", async () => {
+  it("customer picks a portion in the sheet and pays that price", async () => {
     renderAt("/r/spice-junction?fresh");
     await screen.findByText(/Scan & order/i, {}, { timeout: 4000 });
 
-    // The demo Margherita Pizza has portions Regular ₹279 / Large ₹449, so it
-    // renders one ADD button per portion instead of a single one.
-    expect(await screen.findByText(/Margherita Pizza/i)).toBeInTheDocument();
-    const largeRow = screen.getAllByText("Large")[0].closest("div");
-    fireEvent.click(within(largeRow).getByRole("button", { name: /ADD/i }));
+    // Demo Margherita Pizza has portions Regular ₹279 / Large ₹449. Every card
+    // now looks the same — tapping ADD opens the choices sheet.
+    const card = (await screen.findByText(/Margherita Pizza/i)).closest("div").parentElement;
+    fireEvent.click(within(card).getByRole("button", { name: /ADD/i }));
+
+    expect(await screen.findByText(/Choose a portion/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Large"));
+    fireEvent.click(screen.getByRole("button", { name: /^Add ·/i }));
 
     fireEvent.click(screen.getByText(/View cart/i));
     fireEvent.change(screen.getByPlaceholderText("e.g. Aarav"), { target: { value: "Portion Tester" } });
     fireEvent.click(screen.getByText(/Place order/i));
     await screen.findByText(/Your token number/i);
 
-    // The order must carry the PORTION price (₹449), not the base price (₹279),
-    // and the portion must be named on the ticket for the kitchen.
     const order = getPlacedOrders()[0];
     expect(order.items[0].name).toMatch(/Margherita Pizza \(Large\)/);
     expect(order.items[0].price).toBe(449);

@@ -659,6 +659,7 @@ describe("item portions (half plate / full plate)", () => {
     expect(src).toMatch(/price = p\.price;/);
     // a removed/renamed portion drops the line instead of charging a stale price
     expect(src).toMatch(/if \(!p\) return null;/);
+    // one unified card — the separate portion/customisable layouts are gone
     // React keys in the cart drawer must include portion AND add-ons
     expect(src).toMatch(/key=\{cartKey\(l\.id, l\.portion, \(l\.addons \|\| \[\]\)\.map\(\(a\) => a\.label\)\)\}/);
     // the kitchen ticket names the portion
@@ -752,5 +753,56 @@ describe("item add-ons (modifiers)", () => {
     expect(src).toMatch(/Every add-on needs both a name and a price/);
     // cart-key separators must not appear in labels
     expect(src).toMatch(/Names can't contain \| or ::/);
+  });
+});
+
+describe("portion + add-on money flows through bill, dashboard and analytics", () => {
+  it("one stored price per line keeps every surface in agreement", async () => {
+    const { placeOrder, getPlacedOrders } = await import("../lib/orderStore");
+    const { summarize } = await import("../lib/analyticsStore");
+
+    // Full plate ₹160 + Extra cheese ₹30 = ₹190 each, ×2 = ₹380
+    const order = placeOrder({
+      customerName: "Money Chain", phone: "9876500011", orderType: "dinein",
+      items: [{ name: "Dal Fry (Full) + Extra cheese", qty: 2, price: 190, type: "veg" }],
+      subtotal: 380, discount: 0, total: 380,
+    });
+
+    // 1. the order itself
+    expect(order.total).toBe(380);
+
+    // 2. the bill: printBill multiplies price × qty per line, then shows order.total
+    const billLineSum = order.items.reduce((s, i) => s + i.price * i.qty, 0);
+    expect(billLineSum).toBe(order.total);
+
+    // 3. the dashboard: orderItemsSum in LiveOrders uses the same arithmetic
+    const dashSum = order.items.reduce((s, i) => s + i.price * i.qty, 0);
+    expect(dashSum).toBe(380);
+
+    // 4. analytics revenue reads order.total, so it agrees too
+    const mine = getPlacedOrders().filter((o) => o.phone === "9876500011");
+    expect(summarize(mine, 1, Date.now()).revenue).toBe(380);
+
+    // 5. and the kitchen sees exactly what was ordered
+    expect(order.items[0].name).toBe("Dal Fry (Full) + Extra cheese");
+  });
+});
+
+describe("the customer menu uses one card layout for every item", () => {
+  it("the separate portion and customisable card layouts are gone", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    // three shapes on one menu is what made it look inconsistent
+    expect(src).not.toMatch(/function PortionItemRow/);
+    expect(src).not.toMatch(/function CustomisableItemRow/);
+    expect(src).not.toMatch(/function SingleItemRow/);
+    // one card, and anything with choices routes through the sheet
+    expect(src).toMatch(/function ItemRow\(\{ item, cart, onAdd, onSub, onCustomise \}\)/);
+    expect(src).toMatch(/const hasChoices = portions\.length > 0 \|\| addons\.length > 0;/);
+    expect(src).toMatch(/hasChoices \? \(/);
+    // the floating button over the image is preserved for every card
+    expect(src).toMatch(/absolute -bottom-3 left-1\/2 -translate-x-1\/2 w-\[84px\]/);
+    // and the card hints at what's inside before the customer taps
+    expect(src).toMatch(/extra\$\{addons\.length > 1 \? "s" : ""\} available/);
   });
 });
