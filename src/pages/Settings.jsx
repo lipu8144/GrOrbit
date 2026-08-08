@@ -51,7 +51,7 @@ export default function Settings() {
   const [closed, setClosed] = useState(() => rSettings0().closedDays || { Sunday: true });
   const [sessionMins, setSessionMins] = useState(() => rSettings0().menuSessionMins ?? 0);
   const nv0 = rSettings0().growth?.nextVisit || {};
-  const [nv, setNv] = useState({ type: nv0.type || "flat", value: nv0.value ?? 30, minOrder: nv0.minOrder ?? 199, days: nv0.days ?? 30, on: nv0.on !== false });
+  const [nv, setNv] = useState({ type: nv0.type || "flat", value: nv0.value ?? 30, minOrder: nv0.minOrder ?? 199, days: nv0.days ?? 30, on: nv0.on !== false, maxPerPhone: nv0.maxPerPhone ?? 0 });
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -105,7 +105,7 @@ export default function Settings() {
       menuSessionMins: sessionMins,
       growth: {
         ...cur.growth,
-        nextVisit: { type: nv.type, value: Number(nv.value) || 0, minOrder: Number(nv.minOrder) || 0, days: Number(nv.days) || 30, on: nv.on },
+        nextVisit: { type: nv.type, value: Number(nv.value) || 0, minOrder: Number(nv.minOrder) || 0, days: Number(nv.days) || 30, on: nv.on, maxPerPhone: Number(nv.maxPerPhone) || 0 },
         instagram: { ...cur.growth?.instagram, url: social.instagram, on: !!social.instagram },
         facebook: { ...cur.growth?.facebook, url: social.facebook, on: !!social.facebook },
         whatsapp: { ...cur.growth?.whatsapp, number: social.whatsapp, on: !!social.whatsapp },

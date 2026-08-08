@@ -837,3 +837,45 @@ describe("session expiry can only be cleared by a real rescan", () => {
     expect(src).toMatch(/Please scan the QR code at your table again to continue/);
   });
 });
+
+describe("next-visit reward limits per phone", () => {
+  it("the limits are enforced in the DATABASE, not the browser", async () => {
+    const fs = await import("fs");
+    const sql = fs.readFileSync("supabase/migrations/020_reward_limits.sql", "utf8");
+    // one per phone per day, scoped to restaurant + kind
+    expect(sql).toMatch(/issued_at >= date_trunc\('day', now\(\)\)/);
+    expect(sql).toMatch(/reward already issued to this number today/);
+    // optional lifetime cap read from the restaurant's own settings
+    expect(sql).toMatch(/settings->'growth'->'nextVisit'->>'maxPerPhone'/);
+    expect(sql).toMatch(/reward limit reached for this number/);
+    // 0/absent must mean unlimited so existing restaurants are unaffected
+    expect(sql).toMatch(/if coalesce\(v_max, 0\) > 0 then/);
+    // the per-order guard is retained
+    expect(sql).toMatch(/reward already claimed for this order/);
+  });
+
+  it("phone matching normalises digits so formats can't sidestep the cap", async () => {
+    const fs = await import("fs");
+    const sql = fs.readFileSync("supabase/migrations/020_reward_limits.sql", "utf8");
+    // "+91 98765 43210" and "9876543210" must count as the same customer
+    // digits-only comparison (escaping kept simple: check the substrings)
+    expect(sql).toContain("v_phone := regexp_replace(o.customer_phone,");
+    expect(sql).toContain("= v_phone");
+    expect(sql.match(/regexp_replace\(customer_phone/g).length).toBeGreaterThan(1);
+    // and an index supports that normalised lookup
+    expect(sql).toMatch(/idx_issued_phone_digits/);
+  });
+
+  it("the owner can set the cap, and both config screens carry it", async () => {
+    const fs = await import("fs");
+    expect(fs.readFileSync("src/pages/Storefront.jsx", "utf8")).toMatch(/Max rewards per phone number/);
+    expect(fs.readFileSync("src/pages/Settings.jsx", "utf8")).toMatch(/maxPerPhone: Number\(nv\.maxPerPhone\) \|\| 0/);
+  });
+
+  it("refusals are shown to the customer in plain language", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("src/pages/customer/Menu.jsx", "utf8");
+    expect(src).toMatch(/already got a reward for today/);
+    expect(src).toMatch(/earned all the rewards available on this number/);
+  });
+});

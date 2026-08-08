@@ -701,8 +701,17 @@ function ReviewScreen({ settings, restaurant, order, onDone, onBack }) {
   const rwLabel = rwType === "percent" ? `${rwValue}% off` : `₹${rwValue} off`;
   const issueNext = (ph) => issueCouponRemote(order.id, "next_visit", { type: rwType, value: rwValue, minOrder: rwMin }, rwDays).then((res) => {
     if (res.ok) { setNextCode(res.code); setGiftNeedPhone(false); setNextNote(`Locked to ${ph} · single use · valid ${rwDays} days · on orders above ₹${rwMin}`); }
-    else if (/already claimed/i.test(res.error || "")) setNextNote("You've already claimed this order's reward — check your earlier code!");
-    else setNextNote(res.error || "Reward unavailable right now.");
+    else {
+      const e = res.error || "";
+      // The database enforces the reward limits, so translate its refusals into
+      // something a customer can actually act on rather than showing raw SQL text.
+      if (/already claimed/i.test(e)) setNextNote("You've already claimed this order's reward — check your earlier code!");
+      else if (/already issued to this number today/i.test(e)) setNextNote("You've already got a reward for today — use that code on your next visit!");
+      else if (/reward limit reached/i.test(e)) setNextNote("You've earned all the rewards available on this number. Thanks for coming back!");
+      else if (/phone required/i.test(e)) setNextNote("Add your number to claim the reward.");
+      else if (/only unlocks after/i.test(e)) setNextNote("Your reward unlocks once your order is served.");
+      else setNextNote(e || "Reward unavailable right now.");
+    }
   });
   const claimGift = async () => {
     setGiftBusy(true); setNextNote("");

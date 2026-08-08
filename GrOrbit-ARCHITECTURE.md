@@ -657,6 +657,7 @@ a fixed bug cannot silently return.
 | 017 | `one_restaurant_per_owner` | Unique index preventing duplicate restaurants. |
 | 018 | `item_portions` | `menu_items.portions` jsonb — half plate / full plate pricing. |
 | 019 | `item_addons` | `menu_items.addons` jsonb — optional extras priced as a delta. |
+| 020 | `reward_limits` | Per-phone caps on next-visit reward issuance (one/day + owner-set total). |
 
 ### Why migration 016 exists — the lesson worth remembering
 

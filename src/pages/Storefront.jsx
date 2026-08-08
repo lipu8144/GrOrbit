@@ -23,7 +23,7 @@ export default function Storefront() {
   const setGrowth = (key, patch) => setS((p) => ({ ...p, growth: { ...p.growth, [key]: { ...p.growth[key], ...patch } } }));
   // The next-visit reward lives at growth.nextVisit — the SAME field the customer
   // feedback screen reads to mint coupons, and the same one Settings→Ordering edits.
-  const nv = { type: "flat", value: 50, minOrder: 0, days: 30, on: false, ...(s.growth?.nextVisit || {}) };
+  const nv = { type: "flat", value: 50, minOrder: 0, days: 30, on: false, maxPerPhone: 0, ...(s.growth?.nextVisit || {}) };
   const setNv = (patch) => setS((p) => ({ ...p, growth: { ...p.growth, nextVisit: { ...nv, ...patch } } }));
   const save = () => { updateRestaurant(s); setFlash(true); setTimeout(() => setFlash(false), 1600); };
 
@@ -161,6 +161,13 @@ export default function Storefront() {
                 <div>
                   <Label>Valid for (days)</Label>
                   <input type="number" min="1" value={nv.days} onChange={(e) => setNv({ days: +e.target.value || 0 })} className={field} />
+                </div>
+                <div className="col-span-2">
+                  <Label>Max rewards per phone number</Label>
+                  <input type="number" min="0" value={nv.maxPerPhone} onChange={(e) => setNv({ maxPerPhone: +e.target.value || 0 })} className={field} />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    0 = unlimited. A customer can earn at most one reward per day regardless of this setting.
+                  </p>
                 </div>
               </div>
             )}
